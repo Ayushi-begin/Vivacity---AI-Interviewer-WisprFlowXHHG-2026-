@@ -2,7 +2,7 @@ import { History, LayoutGrid, Plus, Settings, Trophy } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { ButtonLink } from '../../components/ui/Button'
 import { PageHeader } from '../../components/ui/Card'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/useAuth'
 
 const TABS = [
   { to: '/dashboard', label: 'Overview', icon: LayoutGrid, end: true },

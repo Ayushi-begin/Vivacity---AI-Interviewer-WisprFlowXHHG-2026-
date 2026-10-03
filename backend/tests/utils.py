@@ -77,5 +77,15 @@ async def complete_interview(
         resp = await answer(client, headers, interview)
         assert resp.status_code == 200, resp.text
         interview = resp.json()
+    # Scoring ran as a background task; the test client waits for it to finish.
+    interview = await get_interview(client, headers, interview["id"])
     assert interview["status"] == "completed"
     return interview
+
+
+async def get_interview(
+    client: AsyncClient, headers: dict[str, str], interview_id: str
+) -> dict[str, Any]:
+    resp = await client.get(f"/api/v1/interviews/{interview_id}", headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()

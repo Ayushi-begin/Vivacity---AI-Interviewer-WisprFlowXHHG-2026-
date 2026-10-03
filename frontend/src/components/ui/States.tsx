@@ -28,8 +28,8 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-col items-center px-6 py-12 text-center">
-      <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent-ink">
+    <div className="flex flex-col items-center px-6 py-14 text-center">
+      <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent-ink ring-8 ring-accent-soft/40">
         <Icon aria-hidden className="size-6" />
       </div>
       <h3 className="text-base font-semibold text-ink">{title}</h3>
@@ -50,7 +50,7 @@ export function ErrorState({
 }) {
   return (
     <div role="alert" className="flex flex-col items-center px-6 py-12 text-center">
-      <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-bad-soft text-bad-ink">
+      <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-bad-soft text-bad-ink ring-8 ring-bad-soft/40">
         <CloudOff aria-hidden className="size-6" />
       </div>
       <h3 className="text-base font-semibold text-ink">{title}</h3>

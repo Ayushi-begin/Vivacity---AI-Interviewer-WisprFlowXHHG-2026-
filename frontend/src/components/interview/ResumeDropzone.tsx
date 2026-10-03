@@ -1,9 +1,9 @@
 import { FileText, UploadCloud, X } from 'lucide-react'
 import { useId, useRef, useState, type DragEvent } from 'react'
 
-export const MAX_RESUME_MB = 5
+const MAX_RESUME_MB = 5
 
-export function validateResume(file: File): string | null {
+function validateResume(file: File): string | null {
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
   if (!isPdf) return 'Please choose a PDF file.'
   if (file.size > MAX_RESUME_MB * 1024 * 1024) return `That file is over ${MAX_RESUME_MB} MB.`

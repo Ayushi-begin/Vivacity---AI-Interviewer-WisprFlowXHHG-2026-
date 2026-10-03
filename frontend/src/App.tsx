@@ -1,48 +1,65 @@
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { AppLayout } from './components/layout/AppLayout'
-import { DashboardLayout } from './pages/dashboard/DashboardLayout'
-import { HistoryPage } from './pages/dashboard/HistoryPage'
-import { LeaderboardPage } from './pages/dashboard/LeaderboardPage'
-import { OverviewPage } from './pages/dashboard/OverviewPage'
-import { SettingsPage } from './pages/dashboard/SettingsPage'
+import { PageLoader } from './components/ui/States'
 import { NotFoundPage, RouteErrorPage } from './pages/ErrorPages'
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { HomePage } from './pages/HomePage'
-import { InterviewPage } from './pages/InterviewPage'
-import { LoginPage } from './pages/LoginPage'
-import { NewInterviewPage } from './pages/NewInterviewPage'
-import { OAuthCallbackPage } from './pages/OAuthCallbackPage'
-import { SignupPage } from './pages/SignupPage'
 import { ProtectedRoute, PublicOnlyRoute } from './routes/guards'
 
+// The home page ships in the main bundle; every other page is its own chunk,
+// fetched the first time someone navigates to it.
 const router = createBrowserRouter([
   {
     element: <AppLayout />,
     errorElement: <RouteErrorPage />,
+    hydrateFallbackElement: <PageLoader />,
     children: [
       { path: '/', element: <HomePage /> },
-      { path: '/oauth/callback', element: <OAuthCallbackPage /> },
+      {
+        path: '/oauth/callback',
+        lazy: async () => ({ Component: (await import('./pages/OAuthCallbackPage')).OAuthCallbackPage }),
+      },
       {
         element: <PublicOnlyRoute />,
         children: [
-          { path: '/login', element: <LoginPage /> },
-          { path: '/signup', element: <SignupPage /> },
-          { path: '/forgot-password', element: <ForgotPasswordPage /> },
+          { path: '/login', lazy: async () => ({ Component: (await import('./pages/LoginPage')).LoginPage }) },
+          { path: '/signup', lazy: async () => ({ Component: (await import('./pages/SignupPage')).SignupPage }) },
+          {
+            path: '/forgot-password',
+            lazy: async () => ({ Component: (await import('./pages/ForgotPasswordPage')).ForgotPasswordPage }),
+          },
         ],
       },
       {
         element: <ProtectedRoute />,
         children: [
-          { path: '/interviews/new', element: <NewInterviewPage /> },
-          { path: '/interviews/:id', element: <InterviewPage /> },
+          {
+            path: '/interviews/new',
+            lazy: async () => ({ Component: (await import('./pages/NewInterviewPage')).NewInterviewPage }),
+          },
+          {
+            path: '/interviews/:id',
+            lazy: async () => ({ Component: (await import('./pages/InterviewPage')).InterviewPage }),
+          },
           {
             path: '/dashboard',
-            element: <DashboardLayout />,
+            lazy: async () => ({ Component: (await import('./pages/dashboard/DashboardLayout')).DashboardLayout }),
             children: [
-              { index: true, element: <OverviewPage /> },
-              { path: 'history', element: <HistoryPage /> },
-              { path: 'leaderboard', element: <LeaderboardPage /> },
-              { path: 'settings', element: <SettingsPage /> },
+              {
+                index: true,
+                lazy: async () => ({ Component: (await import('./pages/dashboard/OverviewPage')).OverviewPage }),
+              },
+              {
+                path: 'history',
+                lazy: async () => ({ Component: (await import('./pages/dashboard/HistoryPage')).HistoryPage }),
+              },
+              {
+                path: 'leaderboard',
+                lazy: async () => ({ Component: (await import('./pages/dashboard/LeaderboardPage')).LeaderboardPage }),
+              },
+              {
+                path: 'settings',
+                lazy: async () => ({ Component: (await import('./pages/dashboard/SettingsPage')).SettingsPage }),
+              },
             ],
           },
         ],

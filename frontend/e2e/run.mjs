@@ -123,18 +123,23 @@ async function seedUser(email, name) {
   return apiJson('/auth/register', { method: 'POST', body: JSON.stringify({ email, password: 'password-123', full_name: name }) })
 }
 
-async function seedInterview(token, { role, company, score }) {
+async function seedInterview(token, { role, company, score, answers = 3 }) {
   const form = new FormData()
   form.append('resume', new Blob([RESUME], { type: 'application/pdf' }), 'resume.pdf')
   form.append('role', role)
   form.append('company', company)
   let interview = await apiJson('/interviews', { method: 'POST', body: form, token })
-  while (interview.next_question) {
+  for (let i = 0; i < answers && interview.next_question; i++) {
     interview = await apiJson(`/interviews/${interview.id}/answers`, {
       method: 'POST',
       token,
       body: JSON.stringify({ question_id: interview.next_question.id, answer: answerOfScore(score) }),
     })
+  }
+  // Scoring runs on the server after the last answer: wait for it like the app does.
+  while (interview.processing) {
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    interview = await apiJson(`/interviews/${interview.id}`, { token })
   }
   return interview
 }
@@ -148,6 +153,29 @@ function watchPage(page) {
     if (msg.type() === 'error' && !/Failed to load resource/.test(msg.text())) problems.push(`console: ${msg.text()}`)
   })
   return problems
+}
+
+const AXE_PATH = join(FRONTEND, 'node_modules/axe-core/axe.min.js')
+const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
+
+/** Run axe-core (WCAG 2.2 AA rules) on the current page and fail on any violation. */
+async function axeCheck(page, label) {
+  await page.waitForTimeout(350) // let entrance animations finish (opacity affects contrast)
+  if (!(await page.evaluate(() => 'axe' in window))) await page.addScriptTag({ path: AXE_PATH })
+  const violations = await page.evaluate(async (tags) => {
+    const result = await window.axe.run(document, { runOnly: { type: 'tag', values: tags } })
+    return result.violations.map((v) => ({
+      id: v.id,
+      impact: v.impact,
+      help: v.help,
+      nodes: v.nodes.slice(0, 3).map((n) => n.target.join(' ') + ' -> ' + (n.failureSummary || '').split('\n').slice(1, 2).join('').trim()),
+    }))
+  }, AXE_TAGS)
+  check(violations.length === 0, label + ': no axe WCAG 2.2 AA violations')
+  for (const v of violations) {
+    console.log('      [' + v.impact + '] ' + v.id + ': ' + v.help)
+    v.nodes.forEach((n) => console.log('        - ' + n))
+  }
 }
 
 async function noHorizontalScroll(page, label) {
@@ -193,6 +221,7 @@ async function suiteSteps(browser, vp, state) {
   check(await page.getByRole('heading', { level: 1 }).isVisible(), 'homepage hero renders')
   await noHorizontalScroll(page, 'home')
   await shot('01-home', true)
+  await axeCheck(page, 'home')
   await page.goto(`${WEB}/dashboard`)
   await page.waitForURL('**/login')
   check(page.url().endsWith('/login'), 'anonymous /dashboard redirects to /login')
@@ -204,6 +233,7 @@ async function suiteSteps(browser, vp, state) {
   check(await oauthToast.isVisible(), 'unconfigured provider shows a friendly toast (no raw JSON page)')
   check(page.url().endsWith('/login'), 'stays on the login page')
   await shot('02-login')
+  await axeCheck(page, 'login')
 
   title(`[${vp.name}] Sign up`)
   await page.goto(`${WEB}/signup`)
@@ -215,6 +245,7 @@ async function suiteSteps(browser, vp, state) {
   await page.getByLabel('Password', { exact: true }).fill('password-123')
   await noHorizontalScroll(page, 'signup')
   await shot('03-signup')
+  await axeCheck(page, 'signup')
   await page.getByRole('button', { name: 'Create account' }).click()
   await page.waitForURL('**/interviews/new')
   await page.getByLabel('Resume PDF').waitFor()
@@ -227,6 +258,7 @@ async function suiteSteps(browser, vp, state) {
     check(true, 'overview empty state')
     await noHorizontalScroll(page, 'empty dashboard')
     await shot('04-dashboard-empty')
+  await axeCheck(page, 'empty dashboard')
     await page.goto(`${WEB}/dashboard/history`)
     await page.getByText('No interviews yet').waitFor()
     check(true, 'history empty state')
@@ -243,6 +275,7 @@ async function suiteSteps(browser, vp, state) {
   await page.getByLabel('Company').fill('Stripe')
   await noHorizontalScroll(page, 'new interview')
   await shot('06-new-interview')
+  await axeCheck(page, 'new interview')
   await page.getByRole('button', { name: 'Start interview' }).click()
   await page.getByText('Preparing your interview').waitFor()
   check(true, 'loading screen appears while questions are generated')
@@ -268,20 +301,25 @@ async function suiteSteps(browser, vp, state) {
   await page.getByText('Question 3 of 3').waitFor()
   await noHorizontalScroll(page, 'chat')
   await shot('08-chat')
+  await axeCheck(page, 'chat')
 
   title(`[${vp.name}] Scoring, feedback and roadmap`)
   await answerQuestion(page, answerOfScore(4), { last: true })
   await page.getByText('Evaluating your interview').waitFor()
   check(true, 'evaluation loading screen appears')
+  check(await page.getByRole('link', { name: 'Go to your interviews' }).isVisible(), 'can leave while scoring runs on the server')
   await shot('09-loading-evaluation')
+  // The page polls until the background scoring finishes.
   await page.getByText('Overall score').waitFor({ timeout: 30_000 })
-  check((await page.locator('main').innerText()).includes('19/30'), 'total score 19/30 shown (9 + 6 + 4)')
+  check(await page.getByText('Your feedback is ready.').isVisible(), 'toast when feedback is ready')
+  check((await page.locator('main').innerText()).includes('19 out of 30'), 'total score 19 out of 30 shown (9 + 6 + 4)')
   check((await page.getByText('What was good').count()) === 3, 'feedback for all three answers')
   check(await page.getByRole('heading', { name: 'Your study roadmap' }).isVisible(), 'roadmap shown')
   await page.getByRole('button', { name: 'A stronger answer' }).first().click()
   check(await page.getByText(/A stronger .* answer/).first().isVisible(), 'better answer expands')
   await noHorizontalScroll(page, 'results')
   await shot('10-results', true)
+  await axeCheck(page, 'results')
   await page.reload()
   await page.getByText('Overall score').waitFor()
   check(true, 'results survive refresh')
@@ -310,6 +348,7 @@ async function suiteSteps(browser, vp, state) {
   check(await tooltip.first().waitFor({ timeout: 5_000 }).then(() => true, () => false), 'chart tooltip appears on hover/tap')
   await noHorizontalScroll(page, 'dashboard')
   await shot('11-dashboard', true)
+  await axeCheck(page, 'dashboard')
   await page.getByRole('radio', { name: 'Table' }).click()
   const rows = await page.locator('table tbody tr').count()
   check(rows === (vp.name === 'desktop' ? 3 : 1), `table view lists every interview (${rows})`)
@@ -320,6 +359,27 @@ async function suiteSteps(browser, vp, state) {
   check((await page.locator('main ul > li').count()) >= 1, 'history lists interviews')
   await noHorizontalScroll(page, 'history')
   await shot('12-history')
+  await axeCheck(page, 'history')
+
+  title(`[${vp.name}] Delete an interview`)
+  const doomed = `Doomed Co ${vp.name}`
+  await seedInterview(token, { role: 'QA Engineer', company: doomed, score: 5, answers: 1 })
+  await page.reload()
+  const deleteButton = page.getByRole('button', { name: `Delete interview: QA Engineer at ${doomed}` })
+  await deleteButton.click()
+  const dialog = page.getByRole('dialog', { name: 'Delete this interview?' })
+  check(await dialog.isVisible(), 'delete asks for confirmation')
+  check((await page.evaluate(() => document.activeElement?.textContent)) === 'Cancel', 'focus starts on Cancel')
+  await shot('12b-delete-dialog')
+  await axeCheck(page, 'delete dialog')
+  await page.keyboard.press('Escape')
+  check(!(await dialog.isVisible()), 'Escape cancels')
+  check(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')?.startsWith('Delete interview')), 'focus returns to the delete button')
+  await deleteButton.click()
+  await dialog.getByRole('button', { name: 'Delete interview' }).click()
+  await page.getByText('Interview deleted.').waitFor()
+  const gone = await page.getByRole('link', { name: new RegExp(doomed) }).waitFor({ state: 'detached', timeout: 5_000 }).then(() => true, () => false)
+  check(gone, 'deleted interview disappears from history')
 
   await page.goto(`${WEB}/dashboard/leaderboard`)
   await page.getByText('Ranked by best score').waitFor()
@@ -337,6 +397,7 @@ async function suiteSteps(browser, vp, state) {
   }
   await noHorizontalScroll(page, 'leaderboard')
   await shot('13-leaderboard')
+  await axeCheck(page, 'leaderboard')
 
   title(`[${vp.name}] Settings and theme`)
   await page.goto(`${WEB}/dashboard/settings`)
@@ -346,7 +407,8 @@ async function suiteSteps(browser, vp, state) {
   check(true, 'display name saved')
   await noHorizontalScroll(page, 'settings')
   await shot('14-settings', true)
-  await page.getByRole('radio', { name: 'Dark' }).click()
+  await axeCheck(page, 'settings')
+  await page.getByRole('radio', { name: /^Dark:/ }).click()
   check((await page.evaluate(() => document.documentElement.dataset.theme)) === 'dark', 'dark theme applied')
   await page.goto(interviewUrl)
   await page.getByText('Overall score').waitFor()
@@ -356,7 +418,58 @@ async function suiteSteps(browser, vp, state) {
   await page.getByText('Score over time').waitFor()
   await shot('16-dashboard-dark', true)
   await page.goto(`${WEB}/dashboard/settings`)
-  await page.getByRole('radio', { name: 'Light' }).click()
+  await page.getByRole('radio', { name: /^Light:/ }).click()
+
+  title(`[${vp.name}] Keyboard: theme menu, account menu, theme picker`)
+  await page.getByRole('button', { name: 'Choose theme' }).focus()
+  await page.keyboard.press('Enter')
+  check(await page.getByRole('menu', { name: 'Choose theme' }).isVisible(), 'Enter opens the theme menu')
+  check((await page.evaluate(() => document.activeElement?.getAttribute('role'))) === 'menuitemradio', 'focus moves into the menu')
+  // Order: Match system, Light, Dark, Solarized Light, Solarized Dark, Parchment.
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  check((await page.evaluate(() => document.documentElement.dataset.theme)) === 'parchment', 'End + Enter picks Parchment')
+  check((await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))) === 'Choose theme', 'focus returns to the menu button')
+  await page.keyboard.press('ArrowDown')
+  check(await page.getByRole('menu', { name: 'Choose theme' }).isVisible(), 'ArrowDown reopens the menu')
+  await page.keyboard.press('Escape')
+  check(!(await page.getByRole('menu').isVisible().catch(() => false)), 'Escape closes the menu')
+  await page.getByRole('radio', { name: /^Parchment:/ }).focus()
+  await page.keyboard.press('ArrowLeft')
+  check((await page.evaluate(() => document.documentElement.dataset.theme)) === 'solarized-dark', 'arrow keys move through the theme cards')
+  await page.keyboard.press('Home')
+  check((await page.evaluate(() => localStorage.getItem('vivacity.theme'))) === 'system', 'Home selects Match system')
+  await page.getByRole('radio', { name: /^Light:/ }).click()
+  await page.getByRole('button', { name: 'Account menu' }).focus()
+  await page.keyboard.press('ArrowDown')
+  check(await page.getByRole('menu', { name: 'Account menu' }).isVisible(), 'ArrowDown opens the account menu')
+  await page.keyboard.press('Escape')
+
+  if (vp.name === 'desktop') {
+    title(`[${vp.name}] Every theme: contrast and screenshots`)
+    for (const theme of ['light', 'dark', 'solarized-light', 'solarized-dark', 'parchment']) {
+      await page.evaluate((t) => localStorage.setItem('vivacity.theme', t), theme)
+      await page.goto(`${WEB}/dashboard`)
+      await page.getByRole('img', { name: /Score over time/ }).waitFor()
+      check((await page.evaluate(() => document.documentElement.dataset.theme)) === theme, `${theme}: applied on load`)
+      await shot(`T-${theme}-dashboard`, true)
+      await axeCheck(page, `${theme} dashboard`)
+      await page.goto(interviewUrl)
+      await page.getByText('Overall score').waitFor()
+      await shot(`T-${theme}-results`)
+      await axeCheck(page, `${theme} results`)
+      await page.goto(`${WEB}/dashboard/settings`)
+      await page.getByRole('radiogroup', { name: 'Theme' }).waitFor()
+      await axeCheck(page, `${theme} settings`)
+    }
+    for (const theme of ['parchment', 'solarized-dark']) {
+      await page.evaluate((t) => localStorage.setItem('vivacity.theme', t), theme)
+      await page.goto(`${WEB}/`)
+      await shot(`T-${theme}-home`, true)
+      await axeCheck(page, `${theme} home`)
+    }
+    await page.evaluate(() => localStorage.setItem('vivacity.theme', 'light'))
+  }
 
   if (vp.isMobile) {
     title(`[${vp.name}] Mobile menu`)
@@ -373,6 +486,7 @@ async function suiteSteps(browser, vp, state) {
   await page.getByText('Interview not found').waitFor()
   check(true, 'missing interview shows a not-found state')
   await shot('18-interview-not-found')
+  await axeCheck(page, 'not found')
   await page.goto(`${WEB}/this/does/not/exist`)
   check(await page.getByText('Page not found').isVisible(), 'unknown route shows 404 page')
 

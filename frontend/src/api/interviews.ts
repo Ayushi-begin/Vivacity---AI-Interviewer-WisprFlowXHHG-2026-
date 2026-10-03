@@ -20,6 +20,7 @@ export async function listInterviews(params: { limit: number; offset: number }) 
   return data
 }
 
+/** After the last answer this returns at once with `processing: true`; scoring runs on the server. */
 export async function submitAnswer(id: string, input: { question_id: string; answer: string }) {
   const { data } = await api.post<Interview>(`/interviews/${id}/answers`, input)
   return data
@@ -28,6 +29,10 @@ export async function submitAnswer(id: string, input: { question_id: string; ans
 export async function retryInterview(id: string) {
   const { data } = await api.post<Interview>(`/interviews/${id}/retry`)
   return data
+}
+
+export async function deleteInterview(id: string) {
+  await api.delete(`/interviews/${id}`)
 }
 
 export async function getRoadmap(id: string) {

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Vivacity/ — the .env file lives at the repo root.
@@ -46,9 +47,26 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
 
+    # --- Abuse protection: per-IP / per-user request limits (see app/api/rate_limits.py) ---
+    RATE_LIMIT_ENABLED: bool = True
+
+    # --- API docs at /docs and /redoc. Turn off in production. ---
+    DOCS_ENABLED: bool = True
+
     # --- Resume uploads (relative paths resolve against backend/) ---
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_MB: int = 5
+
+    @field_validator("JWT_SECRET_KEY")
+    @classmethod
+    def _strong_secret(cls, value: str) -> str:
+        # HS256 needs at least 256 bits of key; a short secret can be brute-forced offline.
+        if len(value) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY must be at least 32 characters. Generate one with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(64))"'
+            )
+        return value
 
     @property
     def upload_path(self) -> Path:

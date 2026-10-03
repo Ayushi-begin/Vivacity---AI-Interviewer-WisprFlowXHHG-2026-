@@ -4,6 +4,7 @@ from fastapi import APIRouter, Cookie
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import DBSession
+from app.api.rate_limits import per_ip
 from app.core.config import settings
 from app.integrations.oauth_providers import OAuthProvider
 from app.services import oauth_service
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["oauth"])
 _COOKIE_PATH = "/api/v1/auth"
 
 
-@router.get("/{provider}/login")
+@router.get("/{provider}/login", dependencies=[per_ip("oauth_login", 30, 60)])
 async def oauth_login(provider: OAuthProvider) -> RedirectResponse:
     url, state = oauth_service.start_login(provider)
     response = RedirectResponse(url, status_code=302)
@@ -30,7 +31,7 @@ async def oauth_login(provider: OAuthProvider) -> RedirectResponse:
     return response
 
 
-@router.get("/{provider}/callback")
+@router.get("/{provider}/callback", dependencies=[per_ip("oauth_callback", 30, 60)])
 async def oauth_callback(
     provider: OAuthProvider,
     session: DBSession,

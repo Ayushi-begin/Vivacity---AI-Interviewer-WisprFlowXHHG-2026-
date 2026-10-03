@@ -1,15 +1,20 @@
-import { LayoutDashboard, LogOut, Menu, Moon, Plus, Settings, Sun } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router'
-import { useAuth } from '../../context/AuthContext'
-import { useTheme } from '../../context/ThemeContext'
+import { LayoutDashboard, LogOut, Monitor, Palette, Plus, Settings } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router'
+import { useAuth } from '../../context/useAuth'
+import { useTheme } from '../../context/useTheme'
+import { THEMES } from '../../theme/themes'
+import { ThemeDots } from '../theme/ThemePreview'
 import { ButtonLink } from '../ui/Button'
 import { Logo } from '../ui/Logo'
+import { DropdownMenu, MenuButton, MenuLabel, MenuLink, MenuRadio, MenuSeparator } from '../ui/Menu'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+  `relative flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${
     isActive ? 'bg-surface-2 text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
   }`
+
+const iconButton =
+  'flex size-10 items-center justify-center rounded-lg text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink aria-expanded:bg-surface-2 aria-expanded:text-ink'
 
 function initials(name: string | null, email: string) {
   const source = name?.trim() || email
@@ -21,47 +26,35 @@ function initials(name: string | null, email: string) {
     .join('')
 }
 
-function ThemeToggle() {
-  const { resolved, toggle } = useTheme()
-  const dark = resolved === 'dark'
+function ThemeMenu() {
+  const { preference, setPreference } = useTheme()
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      className="flex size-9 items-center justify-center rounded-lg text-ink-2 hover:bg-surface-2 hover:text-ink"
-      aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-      title={dark ? 'Light theme' : 'Dark theme'}
+    <DropdownMenu
+      label="Choose theme"
+      trigger={<Palette className="size-[18px]" aria-hidden />}
+      triggerClassName={iconButton}
+      menuClassName="w-60"
     >
-      {dark ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}
-    </button>
+      <MenuLabel>Theme</MenuLabel>
+      <MenuRadio checked={preference === 'system'} onSelect={() => setPreference('system')}>
+        <span className="flex size-5 items-center justify-center" aria-hidden>
+          <Monitor className="size-4" />
+        </span>
+        Match system
+      </MenuRadio>
+      {THEMES.map((theme) => (
+        <MenuRadio key={theme.id} checked={preference === theme.id} onSelect={() => setPreference(theme.id)}>
+          <ThemeDots id={theme.id} mode={theme.mode} />
+          {theme.label}
+        </MenuRadio>
+      ))}
+    </DropdownMenu>
   )
 }
 
 export function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
-  // The menu remembers which page it was opened on, so navigating closes it.
-  const [openedOn, setOpenedOn] = useState<string | null>(null)
-  const menuOpen = openedOn === location.pathname
-  const setMenuOpen = (open: boolean) => setOpenedOn(open ? location.pathname : null)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  // Close on Escape and on outside click.
-  useEffect(() => {
-    if (!menuOpen) return
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && setMenuOpen(false)
-    const onClick = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    document.addEventListener('mousedown', onClick)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.removeEventListener('mousedown', onClick)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menuOpen])
 
   const signOut = async () => {
     await logout()
@@ -69,77 +62,65 @@ export function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-bg/85 backdrop-blur supports-[backdrop-filter]:bg-bg/70">
+    <header className="sticky top-0 z-40 border-b border-line bg-bg/80 backdrop-blur-md supports-[backdrop-filter]:bg-bg/70">
       <nav className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:px-6" aria-label="Main">
         <Logo to={user ? '/dashboard' : '/'} />
 
         {user && (
           <div className="ml-6 hidden items-center gap-1 md:flex">
             <NavLink to="/dashboard" className={navLinkClass}>
-              <LayoutDashboard className="size-4" /> Dashboard
+              <LayoutDashboard aria-hidden className="size-4" /> Dashboard
             </NavLink>
             <NavLink to="/interviews/new" className={navLinkClass}>
-              <Plus className="size-4" /> New interview
+              <Plus aria-hidden className="size-4" /> New interview
             </NavLink>
           </div>
         )}
 
-        <div className="ml-auto flex items-center gap-1.5">
-          <ThemeToggle />
+        <div className="ml-auto flex items-center gap-1">
+          <ThemeMenu />
           {user ? (
-            <div className="relative" ref={menuRef}>
-              <button
-                type="button"
-                onClick={() => setMenuOpen(!menuOpen)}
-                aria-expanded={menuOpen}
-                aria-haspopup="menu"
-                aria-label="Account menu"
-                className="flex items-center gap-2 rounded-lg p-1 hover:bg-surface-2"
-              >
-                {user.avatar_url ? (
-                  <img src={user.avatar_url} alt="" className="size-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+            <DropdownMenu
+              label="Account menu"
+              menuClassName="w-64"
+              triggerClassName="ml-1 flex items-center rounded-full p-0.5 transition-shadow hover:ring-2 hover:ring-line-strong aria-expanded:ring-2 aria-expanded:ring-accent"
+              trigger={
+                user.avatar_url ? (
+                  <img src={user.avatar_url} alt="" className="size-9 rounded-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <span className="flex size-8 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent-ink">
+                  <span
+                    aria-hidden
+                    className="flex size-9 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent-ink"
+                  >
                     {initials(user.full_name, user.email)}
                   </span>
-                )}
-                <Menu className="size-4 text-muted md:hidden" aria-hidden />
-              </button>
-
-              {menuOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 mt-2 w-64 animate-fade-in rounded-xl border border-line bg-surface p-1.5 shadow-xl shadow-black/10"
-                >
-                  <div className="border-b border-line px-3 py-2.5">
-                    <p className="truncate text-sm font-medium text-ink">{user.full_name || 'Your account'}</p>
-                    <p className="truncate text-xs text-muted">{user.email}</p>
-                  </div>
-                  <div className="py-1 md:hidden">
-                    <NavLink role="menuitem" to="/dashboard" className={navLinkClass} end>
-                      <LayoutDashboard className="size-4" /> Dashboard
-                    </NavLink>
-                    <NavLink role="menuitem" to="/interviews/new" className={navLinkClass}>
-                      <Plus className="size-4" /> New interview
-                    </NavLink>
-                  </div>
-                  <NavLink role="menuitem" to="/dashboard/settings" className={navLinkClass}>
-                    <Settings className="size-4" /> Settings
-                  </NavLink>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={signOut}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
-                  >
-                    <LogOut className="size-4" /> Sign out
-                  </button>
-                </div>
-              )}
-            </div>
+                )
+              }
+            >
+              <div className="px-2.5 pt-1.5 pb-2.5">
+                <p className="truncate text-sm font-semibold text-ink">{user.full_name || 'Your account'}</p>
+                <p className="truncate text-xs text-muted">{user.email}</p>
+              </div>
+              <MenuSeparator />
+              <div className="md:hidden">
+                <MenuLink to="/dashboard">
+                  <LayoutDashboard aria-hidden className="size-4" /> Dashboard
+                </MenuLink>
+                <MenuLink to="/interviews/new">
+                  <Plus aria-hidden className="size-4" /> New interview
+                </MenuLink>
+              </div>
+              <MenuLink to="/dashboard/settings">
+                <Settings aria-hidden className="size-4" /> Settings
+              </MenuLink>
+              <MenuSeparator />
+              <MenuButton onSelect={signOut}>
+                <LogOut aria-hidden className="size-4" /> Sign out
+              </MenuButton>
+            </DropdownMenu>
           ) : (
             <>
-              <ButtonLink to="/login" variant="ghost" size="sm">
+              <ButtonLink to="/login" variant="ghost" size="sm" className="ml-1">
                 Log in
               </ButtonLink>
               <ButtonLink to="/signup" size="sm">
@@ -152,4 +133,3 @@ export function Navbar() {
     </header>
   )
 }
-

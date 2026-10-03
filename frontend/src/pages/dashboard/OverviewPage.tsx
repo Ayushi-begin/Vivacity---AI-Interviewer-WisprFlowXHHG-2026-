@@ -1,4 +1,4 @@
-import { ArrowRight, CircleAlert, CircleCheck, Clock3, LineChart } from 'lucide-react'
+import { ArrowRight, Award, CircleAlert, CircleCheck, Clock3, Gauge, LineChart, ListChecks, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { getMyAnalytics } from '../../api/analytics'
@@ -10,20 +10,27 @@ import { Card, CardHeader } from '../../components/ui/Card'
 import { SegmentedControl } from '../../components/ui/SegmentedControl'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/States'
 import { useApi } from '../../hooks/useApi'
+import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 
-function StatTile({ label, value, suffix }: { label: string; value: string; suffix?: string }) {
+function StatTile({ label, value, suffix, icon: Icon }: { label: string; value: string; suffix?: string; icon: LucideIcon }) {
   return (
     <Card className="p-4 sm:p-5">
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-1.5 text-2xl font-semibold tracking-tight text-ink tabular-nums sm:text-3xl">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium text-muted">{label}</p>
+        <span className="hidden size-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-ink sm:flex">
+          <Icon aria-hidden className="size-4" />
+        </span>
+      </div>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-ink tabular-nums sm:text-3xl">
         {value}
-        {suffix && <span className="text-base font-medium text-muted">{suffix}</span>}
+        {suffix && <span className="ml-0.5 text-base font-medium text-muted">{suffix}</span>}
       </p>
     </Card>
   )
 }
 
 export function OverviewPage() {
+  useDocumentTitle('Dashboard')
   const { data, error, loading, reload } = useApi(getMyAnalytics, [])
 
   if (loading && !data) return <OverviewSkeleton />
@@ -78,10 +85,11 @@ function OverviewContent({ data }: { data: Analytics }) {
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatTile label="Interviews completed" value={String(summary.interviews_completed)} />
-        <StatTile label="Average score" value={summary.average_total?.toFixed(1) ?? '–'} suffix={`/${summary.max_total}`} />
-        <StatTile label="Best score" value={String(summary.best_total ?? '–')} suffix={`/${summary.max_total}`} />
+        <StatTile icon={ListChecks} label="Interviews completed" value={String(summary.interviews_completed)} />
+        <StatTile icon={Gauge} label="Average score" value={summary.average_total?.toFixed(1) ?? '–'} suffix={`/${summary.max_total}`} />
+        <StatTile icon={Award} label="Best score" value={String(summary.best_total ?? '–')} suffix={`/${summary.max_total}`} />
         <StatTile
+          icon={LineChart}
           label="Average per answer"
           value={summary.average_answer_score?.toFixed(1) ?? '–'}
           suffix={`/${summary.max_answer_score}`}

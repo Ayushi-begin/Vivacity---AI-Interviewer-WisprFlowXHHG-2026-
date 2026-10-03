@@ -38,10 +38,11 @@ from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 
 import app.models  # noqa: E402, F401
 from app.agents.interview_graph import build_interview_graph  # noqa: E402
-from app.api.deps import get_interview_graph  # noqa: E402
+from app.api.deps import get_optional_interview_graph  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
-from app.db.session import get_session  # noqa: E402
+from app.core.rate_limit import limiter  # noqa: E402
+from app.db.session import get_session, get_session_factory  # noqa: E402
 from app.main import app  # noqa: E402
 from tests.fakes import FakeLLM  # noqa: E402
 
@@ -81,6 +82,8 @@ async def client(session_factory: async_sessionmaker[AsyncSession]) -> AsyncIter
             yield session
 
     app.dependency_overrides[get_session] = _get_test_session
+    # Background tasks (scoring) open their own sessions on the same test database.
+    app.dependency_overrides[get_session_factory] = lambda: session_factory
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
         yield c
     app.dependency_overrides.clear()
@@ -91,6 +94,12 @@ def upload_dir(tmp_path, monkeypatch: pytest.MonkeyPatch):  # noqa: ANN001, ANN2
     """Resume uploads go to a temp dir, never backend/uploads."""
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path / "uploads"))
     return tmp_path / "uploads"
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits() -> None:
+    """Every test starts with fresh request limits (all test requests share one IP)."""
+    limiter.reset()
 
 
 @pytest.fixture
@@ -108,5 +117,5 @@ def checkpointer() -> InMemorySaver:
 def interview_graph(client: AsyncClient, fake_llm: FakeLLM, checkpointer: InMemorySaver):  # noqa: ANN201
     """Serve a graph backed by the fake LLM. The same instance is used for the whole test."""
     graph = build_interview_graph(fake_llm, checkpointer)
-    app.dependency_overrides[get_interview_graph] = lambda: graph
+    app.dependency_overrides[get_optional_interview_graph] = lambda: graph
     return graph

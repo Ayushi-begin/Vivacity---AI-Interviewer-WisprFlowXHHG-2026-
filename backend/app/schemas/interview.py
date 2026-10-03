@@ -72,9 +72,11 @@ class InterviewDetail(BaseModel):
     next_question: NextQuestion | None
     questions: list[QuestionOut]
     roadmap: RoadmapOut | None
+    # True while scoring (or a retry) runs in the background. Poll until it's false.
+    processing: bool = False
 
     @classmethod
-    def from_model(cls, interview: Any) -> "InterviewDetail":
+    def from_model(cls, interview: Any, *, processing: bool = False) -> "InterviewDetail":
         completed = interview.status == "completed"
         questions = sorted(interview.questions, key=lambda q: q.position)
         pending = next((q for q in questions if q.answer is None), None)
@@ -103,6 +105,7 @@ class InterviewDetail(BaseModel):
                 for q in questions
             ],
             roadmap=RoadmapOut.model_validate(interview.roadmap) if interview.roadmap else None,
+            processing=processing and not completed,
         )
 
 

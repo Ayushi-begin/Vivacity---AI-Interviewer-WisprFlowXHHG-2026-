@@ -1,24 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import * as authApi from '../api/auth'
 import { setSessionExpiredHandler } from '../api/client'
 import { tokens } from '../api/tokens'
 import type { TokenPair, User } from '../api/types'
-import { useToast } from './ToastContext'
-
-type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
-
-interface AuthContextValue {
-  user: User | null
-  status: AuthStatus
-  login: (email: string, password: string) => Promise<void>
-  register: (input: { email: string; password: string; full_name?: string }) => Promise<void>
-  /** Finish a Google/GitHub sign-in with the tokens from the redirect. */
-  completeOAuth: (pair: Pick<TokenPair, 'access_token' | 'refresh_token'>) => Promise<void>
-  logout: () => Promise<void>
-  setUser: (user: User) => void
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null)
+import { AuthContext, type AuthStatus } from './useAuth'
+import { useToast } from './useToast'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const toast = useToast()
@@ -92,10 +78,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, status, login, register, startSession, logout, setUser],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext)
-  if (!context) throw new Error('useAuth must be used inside <AuthProvider>')
-  return context
 }

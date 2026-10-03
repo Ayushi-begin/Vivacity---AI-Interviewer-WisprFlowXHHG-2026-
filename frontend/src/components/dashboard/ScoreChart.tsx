@@ -151,7 +151,7 @@ export function ScoreChart({ points }: { points: ScorePoint[] }) {
 
       {activePoint && activeCoord && (
         <div
-          className="pointer-events-none absolute z-10 w-44 -translate-x-1/2 rounded-lg border border-line bg-surface px-3 py-2 text-xs shadow-lg shadow-black/10"
+          className="pointer-events-none absolute z-10 w-44 -translate-x-1/2 rounded-lg border border-line bg-surface px-3 py-2 text-xs shadow-overlay"
           style={{ left: tooltipLeft, top: Math.max(activeCoord.y - 86, 0) }}
           role="status"
         >

@@ -5,23 +5,29 @@ Two stores work together:
   LLM outputs as they're produced.
 - The SQL tables are what the API, history and analytics read.
 
-Answers are committed to SQL *before* the graph runs. `_advance` then walks the graph
-forward, feeding it any answers it hasn't consumed yet, and copies its results back
-into SQL. It is idempotent, so a failed LLM call loses nothing: calling it again (via
-the retry endpoint) resumes from the step that failed.
+Answers are only written to SQL while the interview is under way, which keeps each
+answer request fast. After the last one, a background task runs `_advance`: it walks
+the graph forward, feeding it every answer it hasn't consumed yet, then copies the
+results back into SQL. It is idempotent, so a failed LLM call loses nothing: calling
+it again (via the retry endpoint) resumes from the step that failed.
+
+Scoring the three answers and writing the roadmap takes 10-20 seconds. Meanwhile the
+API reports `processing: true` and the client polls.
 """
 import logging
+import time
 import uuid
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.llm import LLMError
 from app.core.config import settings
 from app.core.exceptions import (
+    AppError,
     BadGatewayError,
     ConflictError,
     NotFoundError,
@@ -40,6 +46,32 @@ NOT_FOUND = "Interview not found"
 LLM_FAILED = "The AI interviewer couldn't finish this step. Your progress is saved, so please retry."
 # Generate questions, answer x3, evaluate, roadmap: well under this.
 _MAX_GRAPH_STEPS = 10
+# A background step that hasn't finished by now is assumed lost (e.g. the task never
+# started), so the interview offers a retry instead of spinning forever.
+_PROCESSING_TIMEOUT_SECONDS = 300
+
+# Interviews with a background step running in this process, with its start time.
+# A restart forgets them, which is safe: the interview then shows as needing a retry,
+# and retrying is idempotent.
+_in_flight: dict[uuid.UUID, float] = {}
+
+
+def is_processing(interview_id: uuid.UUID) -> bool:
+    started = _in_flight.get(interview_id)
+    return started is not None and time.monotonic() - started < _PROCESSING_TIMEOUT_SECONDS
+
+
+def _claim(interview_id: uuid.UUID) -> bool:
+    """Mark a background step as started. False if one is already running."""
+    if is_processing(interview_id):
+        return False
+    _in_flight[interview_id] = time.monotonic()
+    return True
+
+
+def _clean_label(value: str) -> str:
+    # Role and company go into the system prompt, so keep them to one plain line.
+    return " ".join(value.split())
 
 
 def _config(interview_id: uuid.UUID) -> RunnableConfig:
@@ -86,7 +118,11 @@ async def start_interview(
         parsed_text=resume_text,
     )
     interview = await interview_repo.create(
-        session, user_id=user.id, resume_id=resume.id, role=role.strip(), company=company.strip()
+        session,
+        user_id=user.id,
+        resume_id=resume.id,
+        role=_clean_label(role),
+        company=_clean_label(company),
     )
     # Commit first, so the interview exists (and can be retried) even if the LLM fails.
     await session.commit()
@@ -101,13 +137,14 @@ async def start_interview(
 
 async def submit_answer(
     session: AsyncSession,
-    graph: CompiledStateGraph,
     user: User,
     interview_id: uuid.UUID,
     *,
     question_id: uuid.UUID,
     answer: str,
-) -> Interview:
+) -> tuple[Interview, bool]:
+    """Store an answer and move the interview on. Returns (interview, finish_in_background):
+    after the last answer the caller must schedule `finish_in_background`."""
     interview = await _get_owned(session, user, interview_id)
     if interview.status == "completed":
         raise ConflictError("This interview is already finished")
@@ -124,24 +161,78 @@ async def submit_answer(
         raise NotFoundError("Question not found in this interview")
 
     try:
-        await interview_repo.add_answer(session, pending.id, answer.strip())
+        pending.answer = await interview_repo.add_answer(session, pending.id, answer.strip())
         await session.commit()
     except IntegrityError:  # a concurrent request answered it first
         await session.rollback()
         raise ConflictError("This question was already answered") from None
 
-    await _advance(session, graph, interview)
-    return await _get_owned(session, user, interview_id)
+    # The graph catches up on the stored answers after the last one, in the background.
+    return interview, pending is questions[-1] and _claim(interview_id)
 
 
 async def retry(
-    session: AsyncSession, graph: CompiledStateGraph, user: User, interview_id: uuid.UUID
-) -> Interview:
-    """Resume an interview whose last AI step failed. Safe to call at any time."""
+    session: AsyncSession, user: User, interview_id: uuid.UUID
+) -> tuple[Interview, bool]:
+    """Resume an interview whose last AI step failed. Safe to call at any time.
+    Returns (interview, finish_in_background), like `submit_answer`."""
     interview = await _get_owned(session, user, interview_id)
-    if interview.status != "completed":
-        await _advance(session, graph, interview)
-    return await _get_owned(session, user, interview_id)
+    if interview.status == "completed":
+        return interview, False
+    return interview, _claim(interview_id)
+
+
+async def finish_in_background(
+    session_factory: async_sessionmaker[AsyncSession],
+    graph: CompiledStateGraph,
+    user_id: uuid.UUID,
+    interview_id: uuid.UUID,
+) -> None:
+    """Run the remaining AI steps after the response has been sent. Failures are logged
+    and leave the interview retryable; nothing is raised to the caller."""
+    try:
+        async with session_factory() as session:
+            interview = await interview_repo.get_for_user(session, interview_id, user_id)
+            if interview is not None and interview.status != "completed":
+                await _advance(session, graph, interview)
+    except AppError as exc:
+        logger.warning("Interview %s: background step stopped: %s", interview_id, exc.detail)
+    except Exception:
+        logger.exception("Interview %s: background step crashed", interview_id)
+    finally:
+        _in_flight.pop(interview_id, None)
+
+
+async def delete_interview(
+    session: AsyncSession,
+    graph: CompiledStateGraph | None,
+    user: User,
+    interview_id: uuid.UUID,
+) -> None:
+    """Delete an interview with its answers, roadmap, resume file and LangGraph checkpoint."""
+    interview = await _get_owned(session, user, interview_id)
+    if is_processing(interview_id):
+        raise ConflictError("This interview is still being scored. Try again in a moment.")
+
+    resume = await interview.awaitable_attrs.resume
+    await interview_repo.delete(session, interview)
+    remove_file = None
+    if resume is not None and await resume_repo.count_interviews(session, resume.id) == 0:
+        remove_file = resume.storage_path
+        await resume_repo.delete(session, resume)
+    await session.commit()
+
+    # Cleanup after the commit. If it fails the leftovers are unreachable, so log and move on.
+    if graph is not None and graph.checkpointer is not None:
+        try:
+            await graph.checkpointer.adelete_thread(str(interview_id))
+        except Exception:
+            logger.exception("Interview %s: could not delete its checkpoint", interview_id)
+    if remove_file:
+        try:
+            await file_storage.delete_resume(settings.upload_path, remove_file)
+        except (OSError, ValueError):
+            logger.exception("Interview %s: could not delete the resume file", interview_id)
 
 
 async def get_interview(session: AsyncSession, user: User, interview_id: uuid.UUID) -> Interview:

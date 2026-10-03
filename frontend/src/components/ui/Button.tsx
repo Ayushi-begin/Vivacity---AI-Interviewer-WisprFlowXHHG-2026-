@@ -6,22 +6,22 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type Size = 'sm' | 'md' | 'lg'
 
 const base =
-  'inline-flex items-center justify-center gap-2 rounded-lg font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-55'
+  'inline-flex items-center justify-center gap-2 rounded-lg font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-150 select-none active:translate-y-px disabled:pointer-events-none disabled:opacity-50'
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-accent text-on-accent hover:bg-accent-hover shadow-sm',
-  secondary: 'border border-line bg-surface text-ink hover:bg-surface-2',
+  primary: 'bg-primary text-on-primary shadow-card hover:bg-primary-hover',
+  secondary: 'border border-line bg-surface text-ink shadow-card hover:border-line-strong hover:bg-surface-2',
   ghost: 'text-ink-2 hover:bg-surface-2 hover:text-ink',
-  danger: 'border border-line bg-surface text-bad-ink hover:bg-bad-soft',
+  danger: 'border border-line bg-surface text-bad-ink shadow-card hover:border-bad/40 hover:bg-bad-soft',
 }
 
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3 text-sm',
+  sm: 'h-9 px-3 text-sm',
   md: 'h-10 px-4 text-sm',
-  lg: 'h-12 px-5 text-base',
+  lg: 'h-12 px-6 text-[15px]',
 }
 
-export function buttonClasses(variant: Variant = 'primary', size: Size = 'md', extra = '') {
+function buttonClasses(variant: Variant = 'primary', size: Size = 'md', extra = '') {
   return `${base} ${variants[variant]} ${sizes[size]} ${extra}`
 }
 

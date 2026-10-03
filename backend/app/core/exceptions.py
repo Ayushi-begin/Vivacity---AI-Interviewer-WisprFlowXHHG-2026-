@@ -36,6 +36,14 @@ class UnprocessableError(AppError):
     status_code = 422
 
 
+class TooManyRequestsError(AppError):
+    status_code = 429
+
+    def __init__(self, detail: str, retry_after: int) -> None:
+        super().__init__(detail)
+        self.retry_after = retry_after
+
+
 class BadGatewayError(AppError):
     """An upstream service (e.g. the LLM) failed."""
 
@@ -48,7 +56,11 @@ class ServiceUnavailableError(AppError):
 
 async def _app_error_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
-    headers = {"WWW-Authenticate": "Bearer"} if isinstance(exc, AuthenticationError) else None
+    headers = None
+    if isinstance(exc, AuthenticationError):
+        headers = {"WWW-Authenticate": "Bearer"}
+    elif isinstance(exc, TooManyRequestsError):
+        headers = {"Retry-After": str(exc.retry_after)}
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=headers)
 
 

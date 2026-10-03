@@ -64,6 +64,8 @@ export interface Interview {
   next_question: { id: string; position: number; question: string } | null
   questions: Question[]
   roadmap: Roadmap | null
+  /** True while scoring (or a retry) runs on the server. Poll until it's false. */
+  processing: boolean
 }
 
 export interface InterviewSummary {

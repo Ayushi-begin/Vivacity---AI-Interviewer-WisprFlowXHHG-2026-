@@ -1,40 +1,62 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react'
 import { getErrorMessage, getStatus } from '../api/errors'
 
-interface ApiState<T> {
+interface Settled<T> {
+  /** Which request this result belongs to. */
+  request: string
   data: T | null
   error: string | null
   status: number | undefined
-  loading: boolean
 }
 
 /**
  * Load data on mount (and when `deps` change) with loading and error state.
  * Stale responses from an earlier call are ignored. `setData` lets a page swap in
- * fresh data from a mutation without refetching.
+ * fresh data from a mutation (or a poll) without refetching. `deps` must be
+ * JSON-serialisable values such as ids and page numbers.
  */
 export function useApi<T>(load: () => Promise<T>, deps: DependencyList) {
-  const [state, setState] = useState<ApiState<T>>({ data: null, error: null, status: undefined, loading: true })
-  const callId = useRef(0)
-  const loadFn = useCallback(load, deps)
+  const [nonce, setNonce] = useState(0)
+  const request = `${JSON.stringify(deps)}#${nonce}`
+  const [settled, setSettled] = useState<Settled<T>>({ request: '', data: null, error: null, status: undefined })
 
-  const run = useCallback(async () => {
-    const id = ++callId.current
-    setState((current) => ({ ...current, loading: true, error: null, status: undefined }))
-    try {
-      const data = await loadFn()
-      if (id === callId.current) setState({ data, error: null, status: undefined, loading: false })
-    } catch (error) {
-      if (id === callId.current)
-        setState({ data: null, error: getErrorMessage(error), status: getStatus(error), loading: false })
-    }
-  }, [loadFn])
+  // Always call the latest `load`, without making it an effect dependency.
+  const loadRef = useRef(load)
+  const requestRef = useRef(request)
+  useEffect(() => {
+    loadRef.current = load
+    requestRef.current = request
+  })
 
   useEffect(() => {
-    void run()
-  }, [run])
+    let current = true
+    loadRef.current().then(
+      (data) => {
+        if (current) setSettled({ request, data, error: null, status: undefined })
+      },
+      (error: unknown) => {
+        if (current) setSettled({ request, data: null, error: getErrorMessage(error), status: getStatus(error) })
+      },
+    )
+    return () => {
+      current = false
+    }
+  }, [request])
 
-  const setData = useCallback((data: T) => setState({ data, error: null, status: undefined, loading: false }), [])
+  const reload = useCallback(() => setNonce((n) => n + 1), [])
+  const setData = useCallback(
+    (data: T) => setSettled({ request: requestRef.current, data, error: null, status: undefined }),
+    [],
+  )
 
-  return { ...state, reload: run, setData }
+  const loading = settled.request !== request
+  return {
+    // While reloading, the previous data stays visible; an old error doesn't.
+    data: settled.data,
+    error: loading ? null : settled.error,
+    status: loading ? undefined : settled.status,
+    loading,
+    reload,
+    setData,
+  }
 }

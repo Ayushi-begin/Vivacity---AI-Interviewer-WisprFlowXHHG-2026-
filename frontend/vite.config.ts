@@ -8,4 +8,14 @@ export default defineConfig({
   // Only VITE_-prefixed values are exposed to the browser. Secrets stay server-side.
   envDir: '..',
   server: { port: 5173, strictPort: true },
+  build: {
+    rollupOptions: {
+      output: {
+        // Libraries change far less often than app code, so they get their own long-lived chunk.
+        manualChunks(id) {
+          if (/node_modules[\/](react|react-dom|react-router|scheduler|axios)[\/]/.test(id)) return 'vendor'
+        },
+      },
+    },
+  },
 })

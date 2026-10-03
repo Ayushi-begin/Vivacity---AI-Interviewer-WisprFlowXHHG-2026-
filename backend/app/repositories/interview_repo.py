@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import Row, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models import Answer, Interview, Question, Roadmap
 
@@ -31,13 +31,20 @@ async def get_for_user(
     result = await session.execute(
         select(Interview)
         .where(Interview.id == interview_id, Interview.user_id == user_id)
+        # Two queries in all: interview + roadmap, then questions + answers.
         .options(
-            selectinload(Interview.questions).selectinload(Question.answer),
-            selectinload(Interview.roadmap),
+            selectinload(Interview.questions).joinedload(Question.answer),
+            joinedload(Interview.roadmap),
         )
         .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
+
+
+async def delete(session: AsyncSession, interview: Interview) -> None:
+    """Delete the interview. Questions, answers and the roadmap go with it (cascade)."""
+    await session.delete(interview)
+    await session.flush()
 
 
 async def list_for_user(

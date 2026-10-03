@@ -1,7 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-
-export type ThemePreference = 'light' | 'dark' | 'system'
-type ResolvedTheme = 'light' | 'dark'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { isThemeId, themeById, type ThemeId, type ThemePreference } from '../theme/themes'
+import { ThemeContext } from './useTheme'
 
 const STORAGE_KEY = 'vivacity.theme' // also read by the pre-paint script in index.html
 const media = () => window.matchMedia('(prefers-color-scheme: dark)')
@@ -9,20 +8,11 @@ const media = () => window.matchMedia('(prefers-color-scheme: dark)')
 function readPreference(): ThemePreference {
   try {
     const value = localStorage.getItem(STORAGE_KEY)
-    return value === 'light' || value === 'dark' ? value : 'system'
+    return isThemeId(value) ? value : 'system'
   } catch {
     return 'system'
   }
 }
-
-interface ThemeContextValue {
-  preference: ThemePreference
-  resolved: ResolvedTheme
-  setPreference: (preference: ThemePreference) => void
-  toggle: () => void
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(readPreference)
@@ -35,11 +25,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => query.removeEventListener('change', onChange)
   }, [])
 
-  const resolved: ResolvedTheme = preference === 'system' ? (systemDark ? 'dark' : 'light') : preference
+  const themeId: ThemeId = preference === 'system' ? (systemDark ? 'dark' : 'light') : preference
+  const theme = themeById(themeId)
 
   useEffect(() => {
-    document.documentElement.dataset.theme = resolved
-  }, [resolved])
+    const root = document.documentElement
+    root.dataset.theme = theme.id
+    root.dataset.mode = theme.mode
+    // Match the mobile browser's toolbar to the page background.
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim()
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg)
+  }, [theme])
 
   const setPreference = useCallback((next: ThemePreference) => {
     setPreferenceState(next)
@@ -50,20 +46,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const toggle = useCallback(
-    () => setPreference(resolved === 'dark' ? 'light' : 'dark'),
-    [resolved, setPreference],
-  )
-
-  const value = useMemo(
-    () => ({ preference, resolved, setPreference, toggle }),
-    [preference, resolved, setPreference, toggle],
-  )
+  const value = useMemo(() => ({ preference, theme, setPreference }), [preference, theme, setPreference])
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext)
-  if (!context) throw new Error('useTheme must be used inside <ThemeProvider>')
-  return context
 }

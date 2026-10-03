@@ -5,8 +5,8 @@ import { AuthCard } from '../components/auth/AuthCard'
 import { Divider, OAuthButtons } from '../components/auth/OAuthButtons'
 import { Button } from '../components/ui/Button'
 import { Field, FormError, Input, PasswordInput } from '../components/ui/Field'
-import { useAuth } from '../context/AuthContext'
-import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/useAuth'
+import { useToast } from '../context/useToast'
 
 const MIN_PASSWORD = 8
 

@@ -9,7 +9,7 @@ const MIN_ANSWER_CHARS = 20
 export function InterviewerBubble({ children, topic, label }: { children: ReactNode; topic?: string | null; label: string }) {
   return (
     <div className="flex animate-slide-up gap-3">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent" aria-hidden>
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary" aria-hidden>
         <Bot className="size-4" />
       </span>
       <div className="min-w-0 max-w-[85%] sm:max-w-[75%]">

@@ -1,35 +1,66 @@
 import { ArrowLeft, FileQuestion, Plus, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { getErrorMessage, getStatus } from '../api/errors'
 import { getInterview, retryInterview, submitAnswer } from '../api/interviews'
 import type { Interview } from '../api/types'
 import { AnswerComposer, CandidateBubble, InterviewerBubble } from '../components/interview/Chat'
+import { DeleteInterviewButton } from '../components/interview/DeleteInterviewButton'
 import { LoadingScreen } from '../components/interview/LoadingScreen'
 import { QuestionFeedback, RoadmapView, ScoreSummary } from '../components/interview/Results'
 import { Button, ButtonLink } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { EmptyState, ErrorState, Skeleton } from '../components/ui/States'
 import { StatusBadge } from '../components/ui/Badge'
-import { useToast } from '../context/ToastContext'
+import { useToast } from '../context/useToast'
 import { useApi } from '../hooks/useApi'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
-const EVALUATION_STEPS = ['Saving your last answer', 'Scoring each answer out of 10', 'Writing feedback and stronger answers', 'Building your study roadmap']
-const RETRY_STEPS = ['Picking up where we left off', 'Finishing the interviewer’s work', 'Saving the results']
+const EVALUATION_STEPS = ['Saving your answers', 'Scoring each answer out of 10', 'Writing feedback and stronger answers', 'Building your study roadmap']
+const QUESTION_STEPS = ['Reading your resume', 'Matching it to the role', 'Writing your three questions']
+// How often to check on scoring that's running on the server.
+const POLL_MS = 2000
 
 export function InterviewPage() {
   const { id = '' } = useParams()
   const toast = useToast()
+  const navigate = useNavigate()
   const { data: interview, error, status, loading, reload, setData } = useApi(() => getInterview(id), [id])
-  const [busy, setBusy] = useState<'evaluating' | 'retrying' | null>(null)
+  const [retrying, setRetrying] = useState(false)
+  const processing = interview?.processing ?? false
+  useDocumentTitle(interview ? `${interview.status === 'completed' ? 'Results' : 'Interview'}: ${interview.role} at ${interview.company}` : loading ? 'Loading interview' : 'Interview')
+
+  // Scoring runs on the server after the last answer. Check back until it's done.
+  useEffect(() => {
+    if (!processing) return
+    let active = true
+    let timer = 0
+    const poll = async () => {
+      try {
+        const fresh = await getInterview(id)
+        if (!active) return
+        setData(fresh)
+        if (!fresh.processing) {
+          if (fresh.status === 'completed') toast.success('Your feedback is ready.')
+          else toast.error("The AI interviewer couldn't finish. Your answers are saved, so you can retry.")
+          return
+        }
+      } catch {
+        // A blip in the connection: keep checking.
+      }
+      if (active) timer = window.setTimeout(poll, POLL_MS)
+    }
+    timer = window.setTimeout(poll, POLL_MS)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [processing, id, setData, toast])
 
   const submit = async (answer: string): Promise<boolean> => {
     if (!interview?.next_question) return false
-    const isLast = interview.next_question.position === interview.questions.length
-    if (isLast) setBusy('evaluating')
     try {
       setData(await submitAnswer(interview.id, { question_id: interview.next_question.id, answer }))
-      if (isLast) toast.success('Your feedback is ready.')
       return true
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -37,33 +68,42 @@ export function InterviewPage() {
       // Either way the server has the truth, so reload it.
       const code = getStatus(err)
       if (code === 502 || code === 409) {
-        void reload()
+        reload()
         return true
       }
       return false
-    } finally {
-      setBusy(null)
     }
   }
 
   const retry = async () => {
     if (!interview) return
-    setBusy('retrying')
+    setRetrying(true)
     try {
       setData(await retryInterview(interview.id))
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
-      setBusy(null)
+      setRetrying(false)
     }
   }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
-      {busy === 'evaluating' && (
-        <LoadingScreen title="Evaluating your interview" steps={EVALUATION_STEPS} note="This usually takes 10–20 seconds. Please keep this tab open." />
-      )}
-      {busy === 'retrying' && <LoadingScreen title="Retrying" steps={RETRY_STEPS} />}
+      {interview?.processing &&
+        (interview.questions.length === 0 ? (
+          <LoadingScreen title="Writing your questions" steps={QUESTION_STEPS} />
+        ) : (
+          <LoadingScreen
+            title="Evaluating your interview"
+            steps={EVALUATION_STEPS}
+            note="This usually takes 10–20 seconds. You can leave this page: scoring carries on, and your results will be in your history."
+            action={
+              <ButtonLink to="/dashboard/history" variant="secondary" size="sm">
+                Go to your interviews
+              </ButtonLink>
+            }
+          />
+        ))}
 
       <Link to="/dashboard/history" className="inline-flex items-center gap-1 text-sm text-muted hover:text-ink">
         <ArrowLeft aria-hidden className="size-4" /> All interviews
@@ -85,22 +125,31 @@ export function InterviewPage() {
           )}
         </Card>
       ) : (
-        <InterviewBody interview={interview} onSubmit={submit} onRetry={retry} retrying={busy === 'retrying'} />
+        <InterviewBody
+          interview={interview}
+          onSubmit={submit}
+          onRetry={retry}
+          retrying={retrying}
+          onDeleted={() => navigate('/dashboard/history', { replace: true })}
+        />
       )}
     </div>
   )
 }
 
-function InterviewHeader({ interview }: { interview: Interview }) {
+function InterviewHeader({ interview, onDeleted }: { interview: Interview; onDeleted: () => void }) {
   const answered = interview.questions.filter((q) => q.answer).length
   const total = interview.questions.length || 3
   return (
-    <header className="mt-3 mb-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">
-          {interview.role} <span className="font-normal text-muted">at</span> {interview.company}
-        </h1>
-        <StatusBadge status={interview.status} />
+    <header className="mt-4 mb-8 rounded-2xl border border-line bg-surface p-5 shadow-card sm:p-6">
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+            {interview.role} <span className="font-normal text-muted">at</span> {interview.company}
+          </h1>
+          <StatusBadge status={interview.status} />
+        </div>
+        {!interview.processing && <DeleteInterviewButton interview={interview} onDeleted={onDeleted} />}
       </div>
       {interview.status === 'in_progress' && (
         <div className="mt-4">
@@ -111,7 +160,7 @@ function InterviewHeader({ interview }: { interview: Interview }) {
             <span>{Math.round((answered / total) * 100)}%</span>
           </div>
           <div
-            className="h-1.5 overflow-hidden rounded-full bg-surface-2"
+            className="h-2 overflow-hidden rounded-full bg-accent-soft"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={total}
@@ -131,11 +180,13 @@ function InterviewBody({
   onSubmit,
   onRetry,
   retrying,
+  onDeleted,
 }: {
   interview: Interview
   onSubmit: (answer: string) => Promise<boolean>
   onRetry: () => void
   retrying: boolean
+  onDeleted: () => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const next = interview.next_question
@@ -148,7 +199,7 @@ function InterviewBody({
   if (interview.status === 'completed') {
     return (
       <>
-        <InterviewHeader interview={interview} />
+        <InterviewHeader interview={interview} onDeleted={onDeleted} />
         <div className="space-y-6">
           <ScoreSummary interview={interview} />
           <div className="space-y-4">
@@ -171,10 +222,10 @@ function InterviewBody({
   }
 
   // In progress, but the AI step failed: questions never generated, or evaluation didn't finish.
-  const stuck = interview.questions.length === 0 || !next
+  const stuck = !interview.processing && (interview.questions.length === 0 || !next)
   return (
     <>
-      <InterviewHeader interview={interview} />
+      <InterviewHeader interview={interview} onDeleted={onDeleted} />
       <div className="space-y-5" aria-live="polite">
         {interview.questions
           .filter((q) => q.answer)

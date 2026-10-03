@@ -5,7 +5,7 @@ import { AuthCard } from '../components/auth/AuthCard'
 import { Divider, OAuthButtons } from '../components/auth/OAuthButtons'
 import { Button } from '../components/ui/Button'
 import { Field, FormError, Input, PasswordInput } from '../components/ui/Field'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/useAuth'
 
 export function LoginPage() {
   const { login } = useAuth()

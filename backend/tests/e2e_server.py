@@ -30,6 +30,8 @@ os.environ.update(
         "FRONTEND_URL": args.frontend,
         "CORS_ORIGINS": args.frontend,
         "UPLOAD_DIR": str(workdir / "uploads"),
+        # The browser suite signs in many times from one IP.
+        "RATE_LIMIT_ENABLED": "false",
     }
 )
 
@@ -43,9 +45,9 @@ from sqlalchemy.pool import NullPool  # noqa: E402
 
 import app.models  # noqa: E402, F401
 from app.agents.interview_graph import build_interview_graph  # noqa: E402
-from app.api.deps import get_interview_graph  # noqa: E402
+from app.api.deps import get_optional_interview_graph  # noqa: E402
 from app.db.base import Base  # noqa: E402
-from app.db.session import get_session  # noqa: E402
+from app.db.session import get_session, get_session_factory  # noqa: E402
 from app.main import app  # noqa: E402
 from tests.fakes import FakeLLM  # noqa: E402
 
@@ -91,7 +93,8 @@ async def _session():  # noqa: ANN202
 
 graph = build_interview_graph(SlowFakeLLM(), InMemorySaver())
 app.dependency_overrides[get_session] = _session
-app.dependency_overrides[get_interview_graph] = lambda: graph
+app.dependency_overrides[get_optional_interview_graph] = lambda: graph
+app.dependency_overrides[get_session_factory] = lambda: SessionLocal
 
 if __name__ == "__main__":
     asyncio.run(_create_schema())

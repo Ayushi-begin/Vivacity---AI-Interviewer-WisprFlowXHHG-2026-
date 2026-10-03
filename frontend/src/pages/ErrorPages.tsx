@@ -1,8 +1,10 @@
 import { Compass, TriangleAlert } from 'lucide-react'
 import { isRouteErrorResponse, useRouteError } from 'react-router'
 import { ButtonLink } from '../components/ui/Button'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 export function NotFoundPage() {
+  useDocumentTitle('Page not found')
   return (
     <div className="mx-auto flex max-w-md flex-col items-center px-4 py-20 text-center">
       <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-accent-soft text-accent-ink">
@@ -33,7 +35,7 @@ export function RouteErrorPage() {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="h-10 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent hover:bg-accent-hover"
+          className="h-10 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary hover:bg-primary-hover"
         >
           Reload
         </button>

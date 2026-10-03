@@ -1,8 +1,9 @@
 import uuid
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Resume
+from app.models import Interview, Resume
 
 
 async def create(
@@ -23,3 +24,15 @@ async def create(
 
 async def get(session: AsyncSession, resume_id: uuid.UUID) -> Resume | None:
     return await session.get(Resume, resume_id)
+
+
+async def count_interviews(session: AsyncSession, resume_id: uuid.UUID) -> int:
+    count = await session.scalar(
+        select(func.count()).select_from(Interview).where(Interview.resume_id == resume_id)
+    )
+    return count or 0
+
+
+async def delete(session: AsyncSession, resume: Resume) -> None:
+    await session.delete(resume)
+    await session.flush()

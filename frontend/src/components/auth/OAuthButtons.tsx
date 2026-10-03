@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { checkOAuthProvider, oauthLoginUrl } from '../../api/auth'
 import type { OAuthProvider } from '../../api/types'
-import { useToast } from '../../context/ToastContext'
+import { useToast } from '../../context/useToast'
 import { Button } from '../ui/Button'
 
 function GoogleIcon() {
@@ -45,7 +45,7 @@ export function OAuthButtons({ verb }: { verb: 'Continue' | 'Sign up' }) {
   }
 
   return (
-    <div className="grid gap-2.5 sm:grid-cols-2">
+    <div className="grid gap-2.5">
       {PROVIDERS.map(({ id, label, Icon }) => (
         <Button
           key={id}

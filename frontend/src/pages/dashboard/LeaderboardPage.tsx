@@ -9,6 +9,7 @@ import { Input } from '../../components/ui/Field'
 import { SegmentedControl } from '../../components/ui/SegmentedControl'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/States'
 import { useApi } from '../../hooks/useApi'
+import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 
 const PERIODS: { value: LeaderboardPeriod; label: string }[] = [
   { value: 'all', label: 'All time' },
@@ -54,6 +55,7 @@ function Row({ entry, max }: { entry: LeaderboardEntry; max: number }) {
 }
 
 export function LeaderboardPage() {
+  useDocumentTitle('Leaderboard')
   const [period, setPeriod] = useState<LeaderboardPeriod>('all')
   const [filters, setFilters] = useState({ role: '', company: '' })
   const [draft, setDraft] = useState(filters)

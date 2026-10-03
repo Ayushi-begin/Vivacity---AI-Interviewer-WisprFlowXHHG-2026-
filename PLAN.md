@@ -92,19 +92,21 @@ All routes are under `/api/v1`.
 | 0 | Foundation ✅ | `GET /health` · config, async DB session (Neon), CORS, all models, Alembic |
 | 1 | Email auth ✅ | `POST /auth/register` · `/login` · `/refresh` · `/logout` · `/forgot-password` · `/reset-password` (OTP printed to console) · `GET /users/me` |
 | 2 | OAuth ✅ | `GET /auth/{google\|github}/login` · `/callback` (redirects to `{FRONTEND_URL}/oauth/callback#access_token=…`, or `#error=…`) |
-| 3–6 | Interview flow ✅ | `POST /interviews` (multipart: resume PDF, role, company) creates the 3 questions · `POST /interviews/{id}/answers` {question_id, answer} (the 3rd answer triggers scoring and the roadmap) · `POST /interviews/{id}/retry` (resumes after an AI failure) · `GET /interviews/{id}` · `GET /interviews/{id}/roadmap` |
+| 3–6 | Interview flow ✅ | `POST /interviews` (multipart: resume PDF, role, company) creates the 3 questions · `POST /interviews/{id}/answers` {question_id, answer} (the 3rd answer starts scoring and the roadmap in the background, `processing: true`) · `POST /interviews/{id}/retry` (resumes after an AI failure, also in the background) · `GET /interviews/{id}` (poll while `processing`) · `GET /interviews/{id}/roadmap` · `DELETE /interviews/{id}` (also removes the resume file and the LangGraph checkpoint) |
 | 7 | History + analytics ✅ | `GET /interviews?limit=&offset=` · `GET /analytics/me` (summary, scores over time, strong/weak topics) |
 | 8 | Leaderboard ✅ | `GET /leaderboard?period=week\|month\|all&role=&company=&limit=` |
-
 | 9 | Profile ✅ | `PATCH /users/me` {full_name} (display name for the leaderboard) · `/users/me` returns `has_password` |
-| 10 | Frontend ✅ | All pages above, desktop + mobile, light + dark |
+| 10 | Frontend ✅ | All pages above, desktop + mobile, five themes + system |
+| 11 | Hardening ✅ | Background scoring, interview deletion, rate limits, security headers, strict CORS, JWT secret ≥ 32 chars, prompt-delimiter defanging, route-level code splitting |
 
 ## 4. Decisions
 
 - **Leaderboard metric:** each user's best total score (out of 30), with ties broken by average score and ties sharing a rank. It can be filtered by role, company (case-insensitive) and period. It shows **names only**, never emails or ids, with "Anonymous" when there's no name. The response also includes your own row even if you're outside the top N.
 - **Strong/weak topics:** average answer score per topic (in SQL). A topic averaging 7 or more is strong; below 7 is weak. That matches the cut-off the graph uses for weak areas.
 - **Roadmap weak areas:** topics of answers scoring below 7 come first, then the evaluator's suggested topics. The list is de-duplicated and capped at 6.
-- **Interview durability:** answers are committed to SQL before the graph runs, and the graph is checkpointed in Postgres. If an LLM step fails, the endpoint returns 502 with nothing lost, and `/retry` resumes from that step without re-running finished steps.
+- **Interview durability:** answers are committed to SQL as they arrive, and the graph is checkpointed in Postgres. After the 3rd answer a background task feeds the stored answers to the graph, scores them and writes the roadmap; the API reports `processing: true` until it's done and the client polls. If an LLM step fails, nothing is lost: the interview shows as needing a retry, and `/retry` resumes from that step without re-running finished steps. Which interviews are processing is tracked in-process (one API instance); after a restart they simply show as retryable.
+- **Deleting an interview** removes its questions, answers and roadmap (cascade), its resume row and PDF file, and its LangGraph checkpoint thread. It's refused (409) while scoring is running.
+- **Abuse protection:** in-memory sliding-window rate limits: per IP on login (10/min), signup (10/h), refresh (30/min), forgot-password (5/15 min), reset-password (10/15 min) and OAuth; per user on starting interviews (10/h), answering (30/min) and retrying (10/10 min). Toggle with `RATE_LIMIT_ENABLED`. With several API instances, move this to Redis.
 - **Ownership:** every interview lookup filters by the current user. Other users' interviews return 404, not 403, so ids can't be probed.
 - **Resume storage:** local `backend/uploads/<user_id>/<uuid>.pdf` for now. Only PDFs with real text are accepted (5 MB max, scanned PDFs are rejected).
 - **Tokens:** the access token is a JWT (30 min). The refresh token is an opaque string stored hashed. It rotates on every refresh, and replaying an old one revokes all of the user's sessions.

@@ -8,7 +8,8 @@ import { ResumeDropzone } from '../components/interview/ResumeDropzone'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Field, FormError, Input } from '../components/ui/Field'
-import { useToast } from '../context/ToastContext'
+import { useToast } from '../context/useToast'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 
 const ROLE_SUGGESTIONS = [
   'Software Engineer',
@@ -23,6 +24,7 @@ const ROLE_SUGGESTIONS = [
 ]
 
 export function NewInterviewPage() {
+  useDocumentTitle('New interview')
   const navigate = useNavigate()
   const toast = useToast()
   const [file, setFile] = useState<File | null>(null)

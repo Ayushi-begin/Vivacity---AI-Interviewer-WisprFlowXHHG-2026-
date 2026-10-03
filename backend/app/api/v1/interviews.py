@@ -1,9 +1,16 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Form, Query, Response, UploadFile, status
 
-from app.api.deps import CurrentUser, DBSession, InterviewGraph
+from app.api.deps import (
+    CurrentUser,
+    DBSession,
+    InterviewGraph,
+    OptionalInterviewGraph,
+    SessionFactory,
+)
+from app.api.rate_limits import per_user
 from app.core.config import settings
 from app.schemas.interview import (
     AnswerSubmit,
@@ -17,7 +24,19 @@ from app.services import interview_service
 router = APIRouter(prefix="/interviews", tags=["interviews"])
 
 
-@router.post("", response_model=InterviewDetail, status_code=status.HTTP_201_CREATED)
+def _detail(interview: Any) -> InterviewDetail:
+    return InterviewDetail.from_model(
+        interview, processing=interview_service.is_processing(interview.id)
+    )
+
+
+@router.post(
+    "",
+    response_model=InterviewDetail,
+    status_code=status.HTTP_201_CREATED,
+    # Every start calls the LLM, so cap it per user.
+    dependencies=[per_user("start_interview", 10, 3600)],
+)
 async def start_interview(
     session: DBSession,
     graph: InterviewGraph,
@@ -37,7 +56,7 @@ async def start_interview(
         role=role,
         company=company,
     )
-    return InterviewDetail.from_model(interview)
+    return _detail(interview)
 
 
 @router.get("", response_model=InterviewList)
@@ -60,32 +79,63 @@ async def list_interviews(
 async def get_interview(
     interview_id: uuid.UUID, session: DBSession, user: CurrentUser
 ) -> InterviewDetail:
-    return InterviewDetail.from_model(
-        await interview_service.get_interview(session, user, interview_id)
-    )
+    return _detail(await interview_service.get_interview(session, user, interview_id))
 
 
-@router.post("/{interview_id}/answers", response_model=InterviewDetail)
+@router.delete(
+    "/{interview_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def delete_interview(
+    interview_id: uuid.UUID, session: DBSession, graph: OptionalInterviewGraph, user: CurrentUser
+) -> None:
+    await interview_service.delete_interview(session, graph, user, interview_id)
+
+
+@router.post(
+    "/{interview_id}/answers",
+    response_model=InterviewDetail,
+    dependencies=[per_user("submit_answer", 30, 60)],
+)
 async def submit_answer(
     interview_id: uuid.UUID,
     data: AnswerSubmit,
     session: DBSession,
+    session_factory: SessionFactory,
     graph: InterviewGraph,
     user: CurrentUser,
+    background: BackgroundTasks,
 ) -> InterviewDetail:
-    interview = await interview_service.submit_answer(
-        session, graph, user, interview_id, question_id=data.question_id, answer=data.answer
+    interview, finish = await interview_service.submit_answer(
+        session, user, interview_id, question_id=data.question_id, answer=data.answer
     )
-    return InterviewDetail.from_model(interview)
+    if finish:
+        background.add_task(
+            interview_service.finish_in_background, session_factory, graph, user.id, interview.id
+        )
+    return _detail(interview)
 
 
-@router.post("/{interview_id}/retry", response_model=InterviewDetail)
+@router.post(
+    "/{interview_id}/retry",
+    response_model=InterviewDetail,
+    dependencies=[per_user("retry_interview", 10, 600)],
+)
 async def retry_interview(
-    interview_id: uuid.UUID, session: DBSession, graph: InterviewGraph, user: CurrentUser
+    interview_id: uuid.UUID,
+    session: DBSession,
+    session_factory: SessionFactory,
+    graph: InterviewGraph,
+    user: CurrentUser,
+    background: BackgroundTasks,
 ) -> InterviewDetail:
-    return InterviewDetail.from_model(
-        await interview_service.retry(session, graph, user, interview_id)
-    )
+    interview, finish = await interview_service.retry(session, user, interview_id)
+    if finish:
+        background.add_task(
+            interview_service.finish_in_background, session_factory, graph, user.id, interview.id
+        )
+    return _detail(interview)
 
 
 @router.get("/{interview_id}/roadmap", response_model=RoadmapOut)

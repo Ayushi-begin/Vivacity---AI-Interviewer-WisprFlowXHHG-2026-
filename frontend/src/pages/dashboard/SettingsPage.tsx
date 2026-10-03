@@ -7,16 +7,16 @@ import { PasswordResetForm } from '../../components/auth/PasswordResetForm'
 import { Button } from '../../components/ui/Button'
 import { Card, CardHeader } from '../../components/ui/Card'
 import { Field, FormError, Input } from '../../components/ui/Field'
-import { SegmentedControl } from '../../components/ui/SegmentedControl'
-import { useAuth } from '../../context/AuthContext'
-import { useTheme, type ThemePreference } from '../../context/ThemeContext'
-import { useToast } from '../../context/ToastContext'
+import { ThemePicker } from '../../components/theme/ThemePicker'
+import { useAuth } from '../../context/useAuth'
+import { useToast } from '../../context/useToast'
+import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 
 export function SettingsPage() {
   const { user, setUser, logout } = useAuth()
-  const { preference, setPreference } = useTheme()
   const toast = useToast()
   const navigate = useNavigate()
+  useDocumentTitle('Settings')
 
   const [name, setName] = useState(user?.full_name ?? '')
   const [saving, setSaving] = useState(false)
@@ -72,18 +72,9 @@ export function SettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Appearance" description="Choose light, dark, or match your device." />
-        <div className="p-5">
-          <SegmentedControl<ThemePreference>
-            label="Theme"
-            value={preference}
-            onChange={setPreference}
-            options={[
-              { value: 'light', label: 'Light' },
-              { value: 'dark', label: 'Dark' },
-              { value: 'system', label: 'System' },
-            ]}
-          />
+        <CardHeader title="Appearance" description="Every theme meets WCAG AA contrast. Use the arrow keys to switch." />
+        <div className="p-5 sm:p-6">
+          <ThemePicker />
         </div>
       </Card>
 

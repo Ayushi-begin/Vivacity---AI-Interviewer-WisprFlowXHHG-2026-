@@ -8,8 +8,8 @@ export const API_BASE_URL = (
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  // Finishing an interview runs three evaluations plus the roadmap.
-  timeout: 120_000,
+  // Starting an interview reads the PDF and writes the questions before it responds.
+  timeout: 90_000,
 })
 
 // A 401 from these means "wrong credentials", not "session expired".

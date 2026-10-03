@@ -1,6 +1,7 @@
-import { CircleAlert, CircleCheck, CircleDot, Clock3, TriangleAlert } from 'lucide-react'
+import { CircleDot, Clock3 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { InterviewStatus } from '../../api/types'
+import { scoreBand } from './scoreBand'
 
 type Tone = 'neutral' | 'accent' | 'good' | 'warn' | 'bad'
 
@@ -20,14 +21,6 @@ export function Badge({ tone = 'neutral', children, className = '' }: { tone?: T
   )
 }
 
-/** Score bands. Status colour always comes with an icon and a word, never colour alone. */
-export function scoreBand(score: number, max: number) {
-  const ratio = score / max
-  if (ratio >= 0.7) return { tone: 'good' as const, label: 'Strong', Icon: CircleCheck }
-  if (ratio >= 0.5) return { tone: 'warn' as const, label: 'Fair', Icon: TriangleAlert }
-  return { tone: 'bad' as const, label: 'Needs work', Icon: CircleAlert }
-}
-
 export function ScorePill({ score, max = 10, size = 'md' }: { score: number; max?: number; size?: 'md' | 'lg' }) {
   const { tone, label, Icon } = scoreBand(score, max)
   const big = size === 'lg'
@@ -39,7 +32,7 @@ export function ScorePill({ score, max = 10, size = 'md' }: { score: number; max
       <span>
         {score}/{max}
       </span>
-      <span className="font-medium opacity-90">· {label}</span>
+      <span className="font-medium">· {label}</span>
     </span>
   )
 }

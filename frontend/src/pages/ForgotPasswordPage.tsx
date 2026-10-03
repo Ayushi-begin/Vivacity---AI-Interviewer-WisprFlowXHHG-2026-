@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router'
 import { AuthCard } from '../components/auth/AuthCard'
 import { PasswordResetForm } from '../components/auth/PasswordResetForm'
-import { useToast } from '../context/ToastContext'
+import { useToast } from '../context/useToast'
 
 export function ForgotPasswordPage() {
   const toast = useToast()

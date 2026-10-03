@@ -1,8 +1,34 @@
 import { BookOpen, CheckCircle2, ChevronDown, Clock, Flag, Lightbulb, MinusCircle, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import type { Interview, Question, Roadmap, RoadmapItem } from '../../api/types'
-import { Badge, ScorePill, scoreBand } from '../ui/Badge'
+import { Badge, ScorePill } from '../ui/Badge'
+import { scoreBand } from '../ui/scoreBand'
 import { Card } from '../ui/Card'
+
+/** Meter: accent fill on a lighter track of the same hue; the number carries the value. */
+function ScoreRing({ value, max }: { value: number; max: number }) {
+  const size = 132
+  const stroke = 12
+  const r = (size - stroke) / 2
+  const circumference = 2 * Math.PI * r
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden className="-rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--accent-soft)" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - value / max)}
+        className="transition-[stroke-dashoffset] duration-700 ease-out"
+      />
+    </svg>
+  )
+}
 
 export function ScoreSummary({ interview }: { interview: Interview }) {
   const total = interview.total_score ?? 0
@@ -10,16 +36,25 @@ export function ScoreSummary({ interview }: { interview: Interview }) {
   const { label, Icon } = scoreBand(total, interview.max_score)
   return (
     <Card className="overflow-hidden">
-      <div className="grid gap-6 p-6 sm:grid-cols-[auto_1fr] sm:items-center sm:p-8">
-        <div>
-          <p className="text-sm font-medium text-muted">Overall score</p>
-          <p className="mt-1 text-5xl font-semibold tracking-tight text-ink sm:text-6xl">
-            {total}
-            <span className="text-2xl font-medium text-muted">/{interview.max_score}</span>
-          </p>
-          <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-ink-2">
-            <Icon aria-hidden className="size-4" /> {label} · {percent}%
-          </p>
+      <div className="grid gap-8 p-6 sm:grid-cols-[auto_1fr] sm:items-center sm:p-8">
+        <div className="flex items-center gap-5">
+          <div className="relative flex shrink-0 items-center justify-center">
+            <ScoreRing value={total} max={interview.max_score} />
+            <p className="absolute text-center">
+              <span className="block text-4xl font-semibold tracking-tight text-ink tabular-nums">{total}</span>
+              <span className="text-sm font-medium text-muted">of {interview.max_score}</span>
+            </p>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-muted">Overall score</p>
+            <p className="mt-1 text-2xl font-semibold text-ink">{percent}%</p>
+            <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-ink-2">
+              <Icon aria-hidden className="size-4" /> {label}
+            </p>
+            <p className="sr-only">
+              {total} out of {interview.max_score}
+            </p>
+          </div>
         </div>
         <ul className="space-y-3" aria-label="Score per question">
           {interview.questions.map((q) => (
@@ -30,7 +65,7 @@ export function ScoreSummary({ interview }: { interview: Interview }) {
                 </span>
                 <span className="font-semibold text-ink tabular-nums">{q.answer?.score ?? '–'}/10</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+              <div className="h-2 overflow-hidden rounded-full bg-accent-soft">
                 <div
                   className="h-full rounded-full bg-accent"
                   style={{ width: `${((q.answer?.score ?? 0) / 10) * 100}%` }}

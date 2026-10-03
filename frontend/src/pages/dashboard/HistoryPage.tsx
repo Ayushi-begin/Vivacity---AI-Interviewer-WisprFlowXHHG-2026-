@@ -1,16 +1,19 @@
 import { ChevronLeft, ChevronRight, ChevronRight as Arrow, MessagesSquare } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router'
 import { listInterviews } from '../../api/interviews'
+import { DeleteInterviewButton } from '../../components/interview/DeleteInterviewButton'
 import { ScorePill, StatusBadge } from '../../components/ui/Badge'
 import { Button, ButtonLink } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { EmptyState, ErrorState, Skeleton } from '../../components/ui/States'
 import { useApi } from '../../hooks/useApi'
+import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 
 const PAGE_SIZE = 10
 const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
 export function HistoryPage() {
+  useDocumentTitle('Interview history')
   // The page number lives in the URL, so it survives refreshes and the back button.
   const [params, setParams] = useSearchParams()
   const page = Math.max(1, Number(params.get('page')) || 1)
@@ -50,10 +53,10 @@ export function HistoryPage() {
     <div className="space-y-4">
       <ul className="space-y-3">
         {data.items.map((item) => (
-          <li key={item.id}>
+          <li key={item.id} className="flex items-center gap-1.5 sm:gap-2">
             <Link
               to={`/interviews/${item.id}`}
-              className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 transition-colors hover:border-accent/50 sm:p-5"
+              className="group flex min-w-0 flex-1 items-center gap-4 rounded-2xl border border-line bg-surface p-4 shadow-card transition-colors hover:border-line-strong sm:p-5"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -64,7 +67,8 @@ export function HistoryPage() {
                 </div>
                 <p className="mt-1 text-sm text-muted">
                   {dateFmt.format(new Date(item.completed_at ?? item.created_at))}
-                  {item.status === 'in_progress' && ` · ${item.answered_count} of 3 answered`}
+                  {item.status === 'in_progress' &&
+                    (item.answered_count >= 3 ? ' · All answered, awaiting feedback' : ` · ${item.answered_count} of 3 answered`)}
                 </p>
               </div>
               {item.status === 'completed' && item.total_score != null ? (
@@ -74,6 +78,12 @@ export function HistoryPage() {
               )}
               <Arrow aria-hidden className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
             </Link>
+            <DeleteInterviewButton
+              compact
+              interview={item}
+              // The last item on a later page: step back a page instead of showing an empty one.
+              onDeleted={() => (data.items.length === 1 && page > 1 ? goTo(page - 1) : reload())}
+            />
           </li>
         ))}
       </ul>

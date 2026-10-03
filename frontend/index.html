@@ -4,20 +4,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f6f3" />
     <meta name="description" content="Practice job interviews tailored to your resume, with scores, feedback and a study plan." />
     <title>Vivacity — AI mock interviews</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script>
-      // Apply the saved theme before first paint so dark mode never flashes light.
-      try {
-        var pref = localStorage.getItem('vivacity.theme') || 'system'
-        var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
-        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-      } catch (e) {
-        document.documentElement.dataset.theme = 'light'
-      }
+      // Apply the saved theme before first paint so there's no flash of the wrong theme.
+      // Keep the ids in sync with src/theme/themes.ts.
+      ;(function () {
+        var themes = { light: 'light', dark: 'dark', 'solarized-light': 'light', 'solarized-dark': 'dark', parchment: 'light' }
+        var id = 'light'
+        try {
+          var pref = localStorage.getItem('vivacity.theme')
+          id = themes[pref] ? pref : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        } catch (e) {}
+        document.documentElement.dataset.theme = id
+        document.documentElement.dataset.mode = themes[id]
+      })()
     </script>
   </head>
   <body>
