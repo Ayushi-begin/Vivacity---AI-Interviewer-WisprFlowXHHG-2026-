@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { isThemeId, themeById, type ThemeId, type ThemePreference } from '../theme/themes'
 import { ThemeContext } from './useTheme'
 
-const STORAGE_KEY = 'vivacity.theme' // also read by the pre-paint script in index.html
+const STORAGE_KEY = 'vivacity.theme' // also read by public/theme-init.js
 const media = () => window.matchMedia('(prefers-color-scheme: dark)')
 
 function readPreference(): ThemePreference {

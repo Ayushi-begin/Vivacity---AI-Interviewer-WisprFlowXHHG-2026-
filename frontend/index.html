@@ -10,20 +10,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script>
-      // Apply the saved theme before first paint so there's no flash of the wrong theme.
-      // Keep the ids in sync with src/theme/themes.ts.
-      ;(function () {
-        var themes = { light: 'light', dark: 'dark', 'solarized-light': 'light', 'solarized-dark': 'dark', parchment: 'light' }
-        var id = 'light'
-        try {
-          var pref = localStorage.getItem('vivacity.theme')
-          id = themes[pref] ? pref : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-        } catch (e) {}
-        document.documentElement.dataset.theme = id
-        document.documentElement.dataset.mode = themes[id]
-      })()
-    </script>
+    <!-- Sets the theme before first paint. Blocking on purpose; see the file. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -16,7 +16,7 @@ FastAPI · async SQLAlchemy 2.x + asyncpg · Alembic · PostgreSQL (Neon) · Lan
    - Routes never import repositories. The only ORM model they touch is the `CurrentUser` type from `app/api/deps.py`.
    - Services signal failures by raising `AppError` subclasses from `app/core/exceptions.py`. Routes don't catch or translate them.
    - Slow AI work (scoring, retries) runs after the response as a FastAPI `BackgroundTasks` job. The route schedules a service function and passes it the `SessionFactory` dependency, because the request's session is closed by then. The API reports `processing: true` meanwhile and the client polls.
-   - Abuse-prone endpoints get a limit from `app/api/rate_limits.py` (`per_ip` for anonymous auth endpoints, `per_user` for anything that calls the LLM).
+   - Abuse-prone endpoints get a limit from `app/api/rate_limits.py`: `per_ip` for anonymous auth endpoints, plus `per_email` where an account is targeted (IPs can be forged behind a proxy), and `per_user` for anything that calls the LLM.
 3. **LangGraph agents live in `app/agents/`, and third-party clients (OAuth, PDF, file storage) live in `app/integrations/`.** Only services call them, and they never access the database.
    - LLM prompts are Markdown files in `app/agents/prompts/` (`<step>.system.md` and `<step>.user.md`, with `$placeholder` syntax). Edit prompts there, never inline in Python. Wrap untrusted text (resume, answers) in tags such as `<resume>…</resume>`; `prompts.render` defangs any of the template's tags that appear inside values, so they can't break out.
    - LLM output always goes through structured-output schemas in `app/agents/schemas.py`. These are strict JSON schemas: every field is required, with no defaults and no numeric bounds. Ranges are enforced in the graph.
@@ -39,12 +39,16 @@ FastAPI · async SQLAlchemy 2.x + asyncpg · Alembic · PostgreSQL (Neon) · Lan
    - Post-login redirects belong to `PublicOnlyRoute` only. Pages must not `navigate()` after login/signup (it races the guard).
    - Every data view handles loading (skeleton), empty (`EmptyState`) and error (`ErrorState` with retry) states.
    - Use the design tokens in `src/index.css` (`bg-surface`, `text-ink`, `text-muted`, `bg-primary`, …), never raw hex, so every theme keeps working. Status colours always come with an icon and a label.
-   - Themes: light, dark, solarized-light, solarized-dark, parchment (plus "system"). To add one: add a `[data-theme='id']` block in `src/index.css`, add it to `src/theme/themes.ts` and to the pre-paint map in `index.html`, then run `npm run check:contrast` and the dataviz validator on its `--accent`.
+   - Themes: light, dark, solarized-light, solarized-dark, parchment (plus "system"). To add one: add a `[data-theme='id']` block in `src/index.css`, add it to `src/theme/themes.ts` and to the pre-paint map in `public/theme-init.js`, then run `npm run check:contrast` and the dataviz validator on its `--accent`.
    - `bg-primary` + `text-on-primary` for solid buttons and fills behind text. `accent` is for charts, icons and outlines. Never put text on `bg-accent`.
    - Don't lower text contrast with `opacity-*`. Use `text-muted` instead (axe catches this).
    - Interactive widgets follow WAI-ARIA patterns: use `DropdownMenu` (`components/ui/Menu.tsx`) for menus and `useRadioGroup` for custom radio groups. Every page calls `useDocumentTitle`.
    - Effects must use block bodies: `useEffect(() => { … })`. In newer browsers, `window.scrollTo` returns a Promise, which React treats as a cleanup function and crashes on.
    - Run `npm run e2e` after UI changes and look at the screenshots in `frontend/e2e/screenshots/`.
+
+## Deployment
+
+Backend on Render (`render.yaml` blueprint, one worker, migrations run on start), frontend on Vercel (`frontend/vercel.json`: SPA rewrite + CSP), database on Neon. The CSP forbids inline scripts, so never add an inline `<script>` to `index.html`; put it in `public/`. New backend env vars go in `.env.example` *and* `render.yaml` (`sync: false` for secrets).
 
 ## Commands (run from `backend/`)
 

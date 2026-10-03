@@ -138,3 +138,52 @@ async def test_reset_validates_input(client: AsyncClient) -> None:
     resp = await reset(client, "123456", email="nobody@example.com")
     assert resp.status_code == 400
     assert resp.json() == {"detail": "Invalid or expired code"}
+
+
+async def test_otp_is_emailed_when_email_is_configured(
+    client: AsyncClient, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+    import json
+
+    import httpx
+
+    from app.core.config import settings
+    from app.integrations import email_sender
+    from app.services import notification_service
+
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "brevo-test-key")
+    monkeypatch.setattr(settings, "EMAIL_FROM", "noreply@vivacity.test")
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(201, json={"messageId": "1"})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        email_sender.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw),
+    )
+
+    await register(client)
+    capsys.readouterr()
+    resp = await client.post("/api/v1/auth/forgot-password", json={"email": "ada@example.com"})
+    assert resp.status_code == 202
+    await asyncio.gather(*notification_service._pending)
+
+    # The code goes by email, never into the server logs.
+    assert "OTP" not in capsys.readouterr().out
+    assert len(sent) == 1
+    assert sent[0].headers["api-key"] == "brevo-test-key"
+    body = json.loads(sent[0].content)
+    assert body["to"] == [{"email": "ada@example.com"}]
+    assert body["sender"]["email"] == "noreply@vivacity.test"
+    otp = re.search(r"code is (\d{6})", body["textContent"]).group(1)
+    assert (await reset(client, otp)).status_code == 200
+
+    # Unknown emails send nothing (and get the same response).
+    resp = await client.post("/api/v1/auth/forgot-password", json={"email": "nobody@example.com"})
+    assert resp.status_code == 202
+    assert len(sent) == 1

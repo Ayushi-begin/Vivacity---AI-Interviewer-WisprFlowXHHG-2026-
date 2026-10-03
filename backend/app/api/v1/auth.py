@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
 
 from app.api.deps import DBSession
-from app.api.rate_limits import per_ip
+from app.api.rate_limits import per_email, per_ip
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
@@ -28,6 +28,7 @@ async def register(data: RegisterRequest, session: DBSession) -> TokenPair:
 
 @router.post("/login", response_model=TokenPair, dependencies=[per_ip("login", 10, 60)])
 async def login(data: LoginRequest, session: DBSession) -> TokenPair:
+    per_email("login", data.email, 10, 900)
     return await auth_service.login(session, data)
 
 
@@ -48,6 +49,8 @@ async def logout(data: RefreshRequest, session: DBSession) -> None:
     dependencies=[per_ip("forgot_password", 5, 900)],
 )
 async def forgot_password(data: ForgotPasswordRequest, session: DBSession) -> MessageResponse:
+    # Also stops anyone flooding a person's inbox with reset codes.
+    per_email("forgot_password", data.email, 3, 900)
     await auth_service.request_password_reset(session, data.email)
     return MessageResponse(message="If that email is registered, a reset code has been sent.")
 
@@ -58,5 +61,6 @@ async def forgot_password(data: ForgotPasswordRequest, session: DBSession) -> Me
     dependencies=[per_ip("reset_password", 10, 900)],
 )
 async def reset_password(data: ResetPasswordRequest, session: DBSession) -> MessageResponse:
+    per_email("reset_password", data.email, 10, 900)
     await auth_service.reset_password(session, data)
     return MessageResponse(message="Password updated. Please sign in again.")

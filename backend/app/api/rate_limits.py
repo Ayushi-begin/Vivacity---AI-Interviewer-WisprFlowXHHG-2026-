@@ -34,3 +34,11 @@ def per_user(scope: str, limit: int, window_seconds: int) -> Any:
             limiter.hit(f"{scope}:user:{user.id}", limit=limit, window_seconds=window_seconds)
 
     return Depends(dependency)
+
+
+def per_email(scope: str, email: str, limit: int, window_seconds: int) -> None:
+    """Limit by the account being targeted. Unlike IPs (which a client can disguise
+    behind a forged X-Forwarded-For), this caps guessing against any one account."""
+    if settings.RATE_LIMIT_ENABLED:
+        key = f"{scope}:email:{email.strip().lower()}"
+        limiter.hit(key, limit=limit, window_seconds=window_seconds)

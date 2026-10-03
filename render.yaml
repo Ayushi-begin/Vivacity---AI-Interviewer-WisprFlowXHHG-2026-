@@ -1,0 +1,58 @@
+# Render Blueprint for the Vivacity API (https://render.com/docs/blueprint-spec).
+# Render → New → Blueprint → pick this repo. Values marked `sync: false` are asked for
+# once in the dashboard and never stored in git.
+services:
+  - type: web
+    name: vivacity-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Migrations run before each start. One worker: rate limits and "scoring in
+    # progress" live in memory. --proxy-headers so limits see visitors' IPs.
+    startCommand: >-
+      alembic upgrade head &&
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT --loop asyncio --proxy-headers
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14.7"
+      # Trust X-Forwarded-For from Render's proxy (read by uvicorn's --proxy-headers).
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      # Neon connection string, pasted as-is.
+      - key: DATABASE_URL
+        sync: false
+      # A fresh random secret for production (different from your local one).
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      # https://<this service>.onrender.com/api/v1
+      - key: OAUTH_REDIRECT_BASE_URL
+        sync: false
+      # The Vercel URL, e.g. https://vivacity.vercel.app (no trailing slash).
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      # Optional: email password-reset codes. Leave empty to log them instead.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: DOCS_ENABLED
+        value: "false"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"

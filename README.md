@@ -12,12 +12,13 @@ Upload your resume, pick a role and a company, and answer three interview questi
 2. [How it works](#how-it-works)
 3. [Architecture](#architecture)
 4. [Getting started](#getting-started)
-5. [API reference](#api-reference)
-6. [Security](#security)
-7. [Testing](#testing)
-8. [Project structure](#project-structure)
-9. [Screenshots](#screenshots)
-10. [Known limitations](#known-limitations)
+5. [Deployment](#deployment)
+6. [API reference](#api-reference)
+7. [Security](#security)
+8. [Testing](#testing)
+9. [Project structure](#project-structure)
+10. [Screenshots](#screenshots)
+11. [Known limitations](#known-limitations)
 
 ---
 
@@ -229,7 +230,58 @@ npm run dev        # http://localhost:5173
 1. Open <http://localhost:5173> and sign up.
 2. Upload a text-based PDF resume (scanned PDFs aren't supported), then enter a role and a company.
 3. Answer the three questions. Feedback arrives 10–20 seconds after the last answer.
-4. Forgot your password? The one-time code is **printed in the backend console**, since no email service is wired up yet.
+4. Forgot your password? Locally, the one-time code is **printed in the backend console**. To email it instead, set `BREVO_API_KEY` and `EMAIL_FROM`.
+
+---
+
+## Deployment
+
+```mermaid
+flowchart LR
+    U([Browser]) -->|HTTPS| V["Vercel<br/>static React app<br/>+ CSP headers"]
+    U -->|"HTTPS /api/v1"| R["Render<br/>FastAPI (1 worker)<br/>migrations on start"]
+    R --> N[("Neon Postgres<br/>data + LangGraph checkpoints")]
+    R --> O{{OpenAI}}
+    R --> G{{"Google / GitHub OAuth"}}
+    R -.->|optional| B{{"Brevo email"}}
+```
+
+The backend must run on an always-on server, not serverless functions, because scoring finishes in a background task after the response is sent.
+
+### 1. Backend on Render
+
+1. On [Render](https://render.com), choose **New → Blueprint** and pick this repository. It reads [`render.yaml`](render.yaml).
+2. Fill in the values it asks for:
+
+   | Variable | Value |
+   |---|---|
+   | `DATABASE_URL` | Your Neon connection string |
+   | `OPENAI_API_KEY` | Your OpenAI key |
+   | `OAUTH_REDIRECT_BASE_URL` | `https://<service>.onrender.com/api/v1` |
+   | `FRONTEND_URL`, `CORS_ORIGINS` | Your Vercel URL, e.g. `https://vivacity.vercel.app`. Use a placeholder until step 2 gives you the real one. |
+   | Google/GitHub IDs and secrets | The **production** OAuth clients (step 3) |
+   | `BREVO_API_KEY`, `EMAIL_FROM` | Optional: email reset codes instead of logging them |
+
+   `JWT_SECRET_KEY` is generated for you. API docs are turned off in production.
+3. Deploy, then open `https://<service>.onrender.com/api/v1/health`. It should return `{"status":"ok","database":"ok"}`.
+
+### 2. Frontend on Vercel
+
+1. On [Vercel](https://vercel.com), choose **Add New → Project** and import this repository.
+2. Set **Root Directory** to `frontend`. Vercel detects Vite, and [`frontend/vercel.json`](frontend/vercel.json) supplies the rest.
+3. Add the environment variable `VITE_API_BASE_URL` = `https://<service>.onrender.com/api/v1`, then deploy.
+4. Back on Render, set `FRONTEND_URL` and `CORS_ORIGINS` to the Vercel URL. Render redeploys automatically.
+
+### 3. Production sign-in
+
+| Provider | Where | Callback URL |
+|---|---|---|
+| Google | Same OAuth client: **Authorized redirect URIs → add** | `https://<service>.onrender.com/api/v1/auth/google/callback` |
+| GitHub | A **second** OAuth app (each allows one callback). Homepage: your Vercel URL | `https://<service>.onrender.com/api/v1/auth/github/callback` |
+
+While Google's consent screen is in *Testing*, only listed test users can sign in. Choose **Publish app** to open it to everyone.
+
+> **Render's free plan** sleeps after 15 minutes without traffic, so the first request after a pause takes about a minute. Uploaded PDFs are kept on the instance's disk, which is wiped on each deploy. Interviews are unaffected, because the resume text is stored in the database.
 
 ---
 
@@ -272,7 +324,13 @@ All routes are under `/api/v1`. Interactive docs are at `/docs` while `DOCS_ENAB
   - A `state` cookie (HttpOnly, SameSite=Lax) protects the flow.
   - Tokens come back in the URL fragment, which is never sent to servers or logs, and the app clears it immediately.
   - An existing account is linked only when the provider says the email is verified.
-- **Rate limits** are per IP on login, signup, refresh and password reset, and per user on starting, answering and retrying interviews (which spend OpenAI credits). Exceeding one returns `429` with `Retry-After`.
+- **Rate limits:**
+  - per IP on login, signup, refresh and password reset
+  - per email on login and password reset, so a forged `X-Forwarded-For` can't get around them, and nobody can flood an inbox with reset codes
+  - per user on starting, answering and retrying interviews, which spend OpenAI credits
+
+  Exceeding a limit returns `429` with `Retry-After`.
+- **Content Security Policy** on the deployed frontend: scripts load only from the app's own origin, with no inline scripts allowed. This limits the damage of any cross-site scripting bug, which matters because sign-in tokens live in browser storage.
 - **Data isolation:** every interview query is filtered by its owner, and other users' interviews return `404`, not `403`, so ids can't be probed. The leaderboard shows names only.
 - **Uploads:**
   - PDFs are checked by magic bytes and size (5 MB), and read with a capped number of pages.
@@ -295,7 +353,7 @@ Both `npm audit` and `pip-audit` report no known vulnerabilities in the pinned d
 ## Testing
 
 ```bash
-# Backend: 110 tests on in-memory SQLite with a fake LLM. No network, no .env, no OpenAI.
+# Backend: 113 tests on in-memory SQLite with a fake LLM. No network, no .env, no OpenAI.
 cd backend && .venv/Scripts/python -m pytest
 
 # Frontend
@@ -320,6 +378,7 @@ It also runs **axe-core (WCAG 2.2 AA)** on every page in every theme. Screenshot
 ```
 Vivacity/
 ├── .env.example            # every setting, with placeholders
+├── render.yaml             # Render blueprint for the API
 ├── PLAN.md                 # tables, endpoint build order, design decisions
 ├── CLAUDE.md               # engineering rules for this repo
 ├── docs/screenshots/
@@ -336,6 +395,7 @@ Vivacity/
 │   │   └── core/           # config, security, errors, rate limiter
 │   └── tests/              # pytest suite + e2e test server
 └── frontend/
+    ├── vercel.json         # SPA rewrite, security headers, CSP
     ├── e2e/run.mjs         # browser suite (Playwright + axe-core)
     ├── scripts/            # theme contrast checker
     └── src/
@@ -380,9 +440,9 @@ These come from the automated browser run, which uses a stand-in model, so the q
 ## Known limitations
 
 - **Google and GitHub sign-in haven't been run against the live providers.** The flow and the HTTP exchange with both providers are covered by tests against mocked responses. To use them, register the callback URLs above and add the client IDs to `.env`.
-- **Password-reset codes are printed to the server console.** Plug an email provider into `app/services/notification_service.py` before going live.
+- **Password-reset email is optional.** Without `BREVO_API_KEY` and `EMAIL_FROM`, codes go to the server log, which users can't see.
 - **Single API instance.** Rate limits and "is this interview being scored right now" are kept in memory. That's fine for one server; behind a load balancer, move both to Redis. A restart mid-scoring is safe, because the interview just shows a Retry button.
-- **Resumes are stored on local disk** (`backend/uploads/`). For a multi-server deploy, swap `app/integrations/file_storage.py` for object storage.
+- **Resumes are stored on local disk** (`backend/uploads/`), which is lost on each Render deploy. The resume *text* is kept in the database, so nothing breaks; for permanent PDFs, swap `app/integrations/file_storage.py` for object storage.
 - **Text-based PDFs only.** Scanned or image-only resumes are rejected with a clear message.
 
 ---

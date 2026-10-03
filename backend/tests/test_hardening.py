@@ -22,9 +22,9 @@ async def test_login_is_rate_limited_per_ip(client: AsyncClient) -> None:
 
 async def test_forgot_password_is_rate_limited(client: AsyncClient) -> None:
     url = "/api/v1/auth/forgot-password"
-    for _ in range(5):
-        assert (await client.post(url, json={"email": "a@example.com"})).status_code == 202
-    assert (await client.post(url, json={"email": "b@example.com"})).status_code == 429
+    for i in range(5):
+        assert (await client.post(url, json={"email": f"user{i}@example.com"})).status_code == 202
+    assert (await client.post(url, json={"email": "another@example.com"})).status_code == 429
 
 
 async def test_interview_starts_are_rate_limited_per_user(
@@ -107,3 +107,26 @@ async def test_resume_delete_refuses_paths_outside_the_upload_dir(tmp_path) -> N
     with pytest.raises(ValueError):
         await file_storage.delete_resume(base, str(outside))
     assert outside.exists()
+
+
+async def test_login_limit_per_email_survives_a_change_of_ip(client: AsyncClient) -> None:
+    from app.core.rate_limit import limiter
+
+    await register(client)
+    for _ in range(10):
+        assert (await login(client, password="wrong-password")).status_code == 401
+    # Pretend the attacker rotated their IP: clear only the per-IP counters.
+    for key in [k for k in limiter._hits if k.startswith("login:ip:")]:
+        del limiter._hits[key]
+    assert (await login(client, password="wrong-password")).status_code == 429
+    # Other accounts are unaffected.
+    await register(client, email="grace@example.com")
+    assert (await login(client, email="grace@example.com")).status_code == 200
+
+
+async def test_reset_codes_per_email_are_capped(client: AsyncClient) -> None:
+    url = "/api/v1/auth/forgot-password"
+    for _ in range(3):
+        assert (await client.post(url, json={"email": "victim@example.com"})).status_code == 202
+    assert (await client.post(url, json={"email": "victim@example.com"})).status_code == 429
+    assert (await client.post(url, json={"email": "someone@example.com"})).status_code == 202

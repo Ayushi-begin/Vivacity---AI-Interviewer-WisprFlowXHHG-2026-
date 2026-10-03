@@ -1,6 +1,6 @@
 /**
  * The available themes. Colours live in src/index.css ([data-theme='…'] blocks).
- * Keep the ids in sync with that file and with the pre-paint script in index.html.
+ * Keep the ids in sync with that file and with the pre-paint script in public/theme-init.js.
  */
 export const THEMES = [
   { id: 'light', label: 'Light', mode: 'light', description: 'Clean and bright' },

@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
 
+    # --- Email (Brevo HTTP API). Without both values, OTPs print to the console. ---
+    BREVO_API_KEY: str = ""
+    EMAIL_FROM: str = ""
+    EMAIL_FROM_NAME: str = "Vivacity"
+
     # --- Abuse protection: per-IP / per-user request limits (see app/api/rate_limits.py) ---
     RATE_LIMIT_ENABLED: bool = True
 
@@ -67,6 +72,10 @@ class Settings(BaseSettings):
                 'python -c "import secrets; print(secrets.token_urlsafe(64))"'
             )
         return value
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.BREVO_API_KEY and self.EMAIL_FROM)
 
     @property
     def upload_path(self) -> Path:
