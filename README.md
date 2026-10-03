@@ -2,6 +2,17 @@
 
 Upload your resume, pick a role and a company, and answer three interview questions written from *your* experience. Vivacity scores each answer out of 10, says what was good, what was missing and what a stronger answer looks like, then builds a study roadmap for your weak spots. A dashboard tracks your progress, and a leaderboard compares best scores (names only).
 
+### 🚀 Live demo
+
+**[vivacity-ai-interviewer-wispr-flow.vercel.app](https://vivacity-ai-interviewer-wispr-flow.vercel.app)**
+
+| | |
+|---|---|
+| **App** | https://vivacity-ai-interviewer-wispr-flow.vercel.app |
+| **API** | https://vivacity-api-xjc3.onrender.com/api/v1 ([health check](https://vivacity-api-xjc3.onrender.com/api/v1/health)) |
+
+> The API runs on Render's free plan, which sleeps after 15 minutes without visitors. If the first page load is slow, give it about a minute to wake up.
+
 ![Vivacity home page](docs/screenshots/home.png)
 
 ---
@@ -235,6 +246,8 @@ npm run dev        # http://localhost:5173
 ---
 
 ## Deployment
+
+**Live:** frontend at <https://vivacity-ai-interviewer-wispr-flow.vercel.app> (Vercel), API at <https://vivacity-api-xjc3.onrender.com/api/v1> (Render), database on Neon. Every push to `main` redeploys both.
 
 ```mermaid
 flowchart LR
